@@ -1,0 +1,94 @@
+\subsection{Physical Register File and Conservative Scoreboard}\label{sec:prf+sbcons}
+
+The physical register file contains the value for each physical register, and the conservative scoreboard contains the presence bit for each physical-register value.
+Instructions at the renaming stage will unset the presence bits of the destination physical registers.
+Instructions that just finish execution write data into the physical register file and set the presence bits simultaneously.
+Instructions in the execution pipeline read both the physical register file and the scoreboard to get the source operand and whether the operand data is present or not.
+The scoreboard is called conservative because each presence bit is set only when the data is written to the corresponding physical register.
+
+Although the physical register file and the conservative scoreboard are currently implemented as two separate modules, we describe them as one module here because they should be accessed together.
+
+\subsubsection{Interface}
+Figure~\ref{fig:prf-sb-ifc} shows the interface of the fused module of the physical register file and the conservative scoreboard.
+It should be noted that the interface shown here is different from what is in the source code, which splits this module as two separate modules.
+
+\begin{figure}[!htb]
+\begin{lstlisting}[caption={}]
+// PhyRIndex is the index of a physical reg
+// SupSize is the superscalar size
+interface RFileWr;
+  method Action wr(PhyRIndx rindx, Data data);
+endinterface
+interface RFileRd;
+  method Maybe#(Data) rd1(PhyRIndx rindx);
+  method Maybe#(Data) rd2(PhyRIndx rindx);
+  method Maybe#(Data) rd3(PhyRIndx rindx);
+endinterface
+interface SbSetBusy;
+  method Action set(Maybe#(PhyRIndx) dst);
+endinterface
+interface RFileSbCons#(numeric type wrNum, numeric type rdNum);
+  interface Vector#(wrNum, RFileWr) write;
+  interface Vector#(rdNum, RFileRd) read;
+  interface Vector#(SupSize, SbSetBusy) setBusy;
+endinterface
+module mkRFileSbCons(RFileSbCons#(wrNum, rdNum));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of physical register file and conservative scoreboard}\label{fig:prf-sb-ifc}
+\end{figure}
+
+Now we explain each interface method:
+\begin{itemize}
+    \item Subinterface \emph{write}: provides a vector of methods for instructions that just finish execution to write the data into the physcial register file and set the presence bit.
+    \item Subinterface \emph{read}: provides a vector of methods for instructions at register-read stage to read both the data and presence bit of the source register.
+    In case the presence bit is unset, the method returns \texttt{Invalid}.
+    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+    this method will be called together with the one in the aggressive scoreboard.
+\end{itemize}
+
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item read CF \{write, setBusy\}
+    \item write[0] $<$ write[1] $<$ $\cdots$ $<$ write[wrNum-1] $<$ setBusy[0] $<$ setBusy[1] $<$ $\cdots$ $<$ setBusy[wrNum-1]
+\end{itemize}
+We set all the read methods conflict free with all the write methods, because reads do not need to reflect the effects of writes immediately.
+In case an old instruction is writing a register which is being read by a younger instruction as a source operand, it is ok for the read method to return \texttt{Invalid} even if the write method has been called.
+This simply delays the execution of the younger instruction.
+In our implementation, the read method will return \texttt{Invalid} if a write for the same physical register is being performed in the same cycle.
+This can cut off the combinational path.
+
+Forcing read methods to be ordered before write methods can cause rule-scheduling problems, because rules that read the register file are in earlier pipeline stages than rules that write register file.
+That is, the method ordering will not agree with the (desired) top-level rule ordering.
+
+We also set all the read methods conflict free with all the setBusy methods.
+This is because the renaming algorithm guarantees that a physical register that is being used as a source operand of a (currently correct-path) instruction cannot be a free register for renaming destination architectural registers.
+However, \emph{it is still desirable in the furture implementation to set all the read methods $<$ all the setBusy methods}, because reads happen in later pipeline stages than setBusy does.
+
+We order all the write methods before all the setBusy methods, because write methods are called in later stages in the pipeline than setBusy methods.
+
+\subsubsection{Implementation}
+The implementation uses a vector of EHRs to store the register data, and another vector of EHRs to store the presence bits.
+The write methods and set busy methods directly access the EHRs using appropriate ports according to the conflict matrix of the interface.
+
+The read methods do not directly access the EHRs.
+We use a vector of wires to retrieve value of port 0 of each EHR, and the read methods read from these wires.
+This prevents any combinational path from write to read.
+This is a valid implementation because the read methods are conflict free with the write and setBusy methods, and the read methods can safely ignore the effects caused by the write or setBusy methods.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \texttt{mkRFileSynth} in file \texttt{//procs/RV64G\_OOO/RFileSynth.bsv},
+    \item module \texttt{mkRFile} in file \texttt{//procs/lib/PhysRFile.bsv},
+    \item module \texttt{mkScoreboardCons} in file \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
+    \item module \texttt{mkRenamingScoreboard} in file \texttt{//procs/lib/Scoreboard.bsv}.
+\end{itemize}
+
+\subsubsection{Future Improvement}
+There are two improvements to make in a future implementation:
+\begin{enumerate}
+    \item Merge the physical register file and the conservative scoreboard into one module to ensure that their methods are called together.
+    \item Order the read methods before the setBusy methods, so we don't need to rely on the high-level invariant of the renaming algorithm to ensure correctness.
+\end{enumerate}

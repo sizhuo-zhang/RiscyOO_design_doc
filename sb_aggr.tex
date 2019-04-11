@@ -1,12 +1,14 @@
-\subsection{Aggressive (Optimistic) Scoreboard}
+\subsection{Aggressive (Optimistic) Scoreboard}\label{sec:sbaggr}
 
 The aggressive scoreboard holds an optimistic version of the presence bits of all the physical registers.
 Instructions in the execution pipeline can optimistically set the presence bits in this scoreboard even when the instruction has not yet finished execution (but it may be close to finish).
 The renaming stage will check the presence bits from this scoreboard for the source registers of the renaming instruction, and unset the present bit in this scoreboard for the destination register of the renaming instruction.
 
+The interface and module presented here are slightly different from what is the source code, because the module in the source code is used for not only this aggressive scoreboard but also another conservative scoreboard (Section~\ref{sec:prf+sbcons}).
+
 \subsubsection{Interface}
 Figure~\ref{fig:aggr-sb-ifc} shows the interface of this module.
-The interface is adapted from the \texttt{RenamingScoreboard} interface in \texttt{//procs/lib/Scoreboard.bsv}, which is used for this scoreboard and another conservative scoreboard (Section \mycomment{XXX}).
+
 
 \begin{figure}[!htb]
 \begin{lstlisting}[caption={}]
@@ -35,14 +37,11 @@ endmodule
 Now we explain each interface method and how the method is used. 
 \begin{itemize}
     \item Subinterface \emph{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
-    A vector is needed because multiple instructions in different pipelines can set presence bits in the same cycle.
     \item Subinterface \emph{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
-    A vector is needed because of superscalar renaming.
     \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
-    A vector is needed because of superscalar renaming.
 \end{itemize}
 
-The conflict matrix of the methods is:
+The conflict matrix of the interface methods is:
 \begin{center}
     setReady[0] $<$ $\cdots$ $<$ setReady[setReadyNum-1] $<$ eagerLookup[0] $<$ setBusy[0] $<$ eagerLookup[1] $<$ setBusy[1] $<$ $\cdots$ $<$ eagerLookup[SupSize-1] $<$ setBusy[SupSize-1].
 \end{center}
@@ -59,4 +58,9 @@ It just uses a vector of EHRs to hold the presence bits, one EHR for each bit.
 The interface methods access the EHRs using the appropriate port according to the conflict matrix.
 
 \subsubsection{Source Code}
-See module \texttt{mkScoreboardAggr} in \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv} and module \texttt{mkRenamingScoreboard} in \texttt{//procs/lib/Scoreboard.bsv}.
+See the followings:
+\begin{itemize}
+    \item module \texttt{mkScoreboardAggr} in \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
+    \item module \texttt{mkRenamingScoreboard} in file \texttt{//procs/lib/Scoreboard.bsv}.
+\end{itemize}
+  
