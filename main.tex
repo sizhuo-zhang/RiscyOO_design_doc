@@ -1,4 +1,4 @@
-\documentclass{article}[10pt]
+\documentclass[12pt]{article}
 % my packages
 \usepackage{fullpage}
 \usepackage{amsmath}
@@ -16,6 +16,56 @@
 \usepackage{xcolor}
 \usepackage{hyperref}
 
+\definecolor{commentcolor}{rgb}{0,0.6,0}
+\definecolor{keywordcolor}{rgb}{0,0,0.8}
+\definecolor{numbercolor}{rgb}{0.5,0.5,0.5}
+\definecolor{stringcolor}{rgb}{0.58,0,0.82}
+\lstset{%
+    language=Verilog,                        % closest to BSV
+    backgroundcolor=\color{white},           % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}
+    basicstyle=\ttfamily\bfseries,              % the size of the fonts that are used for the code
+    belowskip=0.5\baselineskip,            % from: http://tex.stackexchange.com/questions/118730/avoid-empty-vert-space-after-lstlisting
+    breakatwhitespace=false,                 % sets if automatic breaks should only happen at whitespace
+    breaklines=true,                         % sets automatic line breaking
+    captionpos=b,                            % sets the caption-position to bottom
+    commentstyle=\color{commentcolor},       % comment style
+    deletekeywords={...},                    % if you want to delete keywords from the given language
+    escapeinside={\%*}{*)},                  % if you want to add LaTeX within your code
+    extendedchars=true,                      % lets you use non-ASCII characters; for 8-bits encodings only, does not work with UTF-8
+    frame=single,                            % adds a frame around the code
+    %frame=none,                              % doesn't add a frame around the code
+    keepspaces=true,                         % keeps spaces in text, useful for keeping indentation of code (possibly needs columns=flexible)
+    %columns=fixed,                           %
+    columns=flexible,                        %
+    keywordstyle=\color{keywordcolor},       % keyword style
+    morekeywords={%
+        call,%Called method
+        def,%Defined method
+        inverted,%Inverted interface
+        type,typedef,valueOf,                                    % Type related keywords
+        method,endmethod,action,endaction,                  % Methods and actions
+        Action,ActionValue,interface,endinterface,          % Interfaces
+        Vector,replicate,replicateM,                        % Vector stuff
+        Bit,Int,UIng,Reg,Integer,let,tagged,union,struct,   % Basic types
+        TAdd,TMul,TDiv,                                     % Type operations
+        rule,endrule,return,                                % Rules keywords
+        pack,unpack,zeroExtend,signExtend,                  % Common bit functions
+        case,matches,endcase                                % Case statements
+        synthesize,True,False,Empty,*,...},                 % Etc.
+    numbers=left,                            % where to put the line-numbers; possible values are (none, left, right)
+    numbersep=5pt,                           % how far the line-numbers are from the code
+    numberstyle=\tiny\color{numbercolor},    % the style that is used for the line-numbers
+    rulecolor=\color{black},                 % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
+    showspaces=false,                        % show spaces everywhere adding particular underscores; it overrides 'showstringspaces'
+    showstringspaces=false,                  % underline spaces within strings only
+    showtabs=false,                          % show tabs within strings adding particular underscores
+    stepnumber=1,                            % the step between two line-numbers. If it's 1, each line will be numbered
+    stringstyle=\color{stringcolor},         % string literal style
+    tabsize=2,                               % sets default tabsize to 2 spaces
+    title=\lstname                           % show the filename of files included with \lstinputlisting; also try caption instead of title
+}
+
+\newcommand{\mycomment}[1]{\emph{\textcolor{red}{[#1]}}}
 
 \begin{document}
 
@@ -24,6 +74,13 @@
 \date{}
 \maketitle
 
+\section{Overview}
 
+
+\section{Processor Core}
+
+\input{sb_aggr}
+
+\section{Uncore}
 
 \end{document}

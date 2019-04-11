@@ -1,0 +1,62 @@
+\subsection{Aggressive (Optimistic) Scoreboard}
+
+The aggressive scoreboard holds an optimistic version of the presence bits of all the physical registers.
+Instructions in the execution pipeline can optimistically set the presence bits in this scoreboard even when the instruction has not yet finished execution (but it may be close to finish).
+The renaming stage will check the presence bits from this scoreboard for the source registers of the renaming instruction, and unset the present bit in this scoreboard for the destination register of the renaming instruction.
+
+\subsubsection{Interface}
+Figure~\ref{fig:aggr-sb-ifc} shows the interface of this module.
+The interface is adapted from the \texttt{RenamingScoreboard} interface in \texttt{//procs/lib/Scoreboard.bsv}, which is used for this scoreboard and another conservative scoreboard (Section \mycomment{XXX}).
+
+\begin{figure}[!htb]
+\begin{lstlisting}[caption={}]
+// PhyRegs is a struct containing all the physical regs of an instruction
+// RegsReady is a struct containing the presence bits for all the physical regs of an instruction
+// PhyRIndex is the index of a physical reg
+// SupSize is the superscalar size
+interface SbLookup;
+  method RegsReady get(PhyRegs r);
+endinterface
+interface SbSetBusy;
+  method Action set(Maybe#(PhyRIndx) dst);
+endinterface
+interface ScoreboardAggr#(numeric type setReadyNum);
+  interface Vector#(setReadyNum, Put#(PhyRIndx)) setReady;
+  interface Vector#(SupSize, SbLookup) eagerLookup;
+  interface Vector#(SupSize, SbSetBusy) setBusy;
+endinterface
+module mkScoreboardAggr(ScoreboardAggr#(setReadyNum));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of the aggressive scoreboard}\label{fig:aggr-sb-ifc}
+\end{figure}
+
+Now we explain each interface method and how the method is used. 
+\begin{itemize}
+    \item Subinterface \emph{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
+    A vector is needed because multiple instructions in different pipelines can set presence bits in the same cycle.
+    \item Subinterface \emph{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
+    A vector is needed because of superscalar renaming.
+    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+    A vector is needed because of superscalar renaming.
+\end{itemize}
+
+The conflict matrix of the methods is:
+\begin{center}
+    setReady[0] $<$ $\cdots$ $<$ setReady[setReadyNum-1] $<$ eagerLookup[0] $<$ setBusy[0] $<$ eagerLookup[1] $<$ setBusy[1] $<$ $\cdots$ $<$ eagerLookup[SupSize-1] $<$ setBusy[SupSize-1].
+\end{center}
+We put all methods in a total order, though the conflict matrix does not need to transitive.
+We order setReady $<$ eagerLookup to match the rule ordering between instruction-execution rules (which call setReady) and the renaming rule (which calls eagerLookup).
+The rule ordering is because the execution rules are in later stages of the pipeline than renaming.
+Thus, eagerLookup will observe the effects of all the calls to setReady in the same cycle, and this is why we call it ``eager''.
+Methods eagerLookup[$i$] and setBusy[$i$] are used by the $i^{th}$ renamed instruction at the renaming stage in each cycle.
+Since the $i^{th}$ instruction should see the renaming effects of all previous instructions, we order setBusy[$0\ldots i-1$] $<$ eagerLookup[$i$].
+
+\subsubsection{Implementation}
+The implementation of the module does not contain any internal rules.
+It just uses a vector of EHRs to hold the presence bits, one EHR for each bit.
+The interface methods access the EHRs using the appropriate port according to the conflict matrix.
+
+\subsubsection{Source Code}
+See module \texttt{mkScoreboardAggr} in \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv} and module \texttt{mkRenamingScoreboard} in \texttt{//procs/lib/Scoreboard.bsv}.
