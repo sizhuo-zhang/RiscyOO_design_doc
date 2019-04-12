@@ -8,7 +8,12 @@ The interface and module presented here are slightly different from what is the 
 
 \subsubsection{Interface}
 Figure~\ref{fig:aggr-sb-ifc} shows the interface of this module.
-
+Now we explain each interface method: 
+\begin{itemize}
+    \item Subinterface \emph{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
+    \item Subinterface \emph{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
+    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+\end{itemize}
 
 \begin{figure}[!htb]
 \begin{lstlisting}[caption={}]
@@ -34,13 +39,7 @@ endmodule
 \caption{Interface of the aggressive scoreboard}\label{fig:aggr-sb-ifc}
 \end{figure}
 
-Now we explain each interface method and how the method is used. 
-\begin{itemize}
-    \item Subinterface \emph{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
-    \item Subinterface \emph{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
-    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
-\end{itemize}
-
+\noindent\textbf{Conflict Matrix:}
 The conflict matrix of the interface methods is:
 \begin{center}
     setReady[0] $<$ $\cdots$ $<$ setReady[setReadyNum-1] $<$ eagerLookup[0] $<$ setBusy[0] $<$ eagerLookup[1] $<$ setBusy[1] $<$ $\cdots$ $<$ eagerLookup[SupSize-1] $<$ setBusy[SupSize-1].

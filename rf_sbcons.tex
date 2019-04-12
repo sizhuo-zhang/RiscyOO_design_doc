@@ -11,6 +11,14 @@ Although the physical register file and the conservative scoreboard are currentl
 \subsubsection{Interface}
 Figure~\ref{fig:prf-sb-ifc} shows the interface of the fused module of the physical register file and the conservative scoreboard.
 It should be noted that the interface shown here is different from what is in the source code, which splits this module as two separate modules.
+Now we explain each interface method:
+\begin{itemize}
+    \item Subinterface \emph{write}: provides a vector of methods for instructions that just finish execution to write the data into the physcial register file and set the presence bit.
+    \item Subinterface \emph{read}: provides a vector of methods for instructions at register-read stage to read both the data and presence bit of the source register.
+    In case the presence bit is unset, the method returns \texttt{Invalid}.
+    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+    this method will be called together with the one in the aggressive scoreboard.
+\end{itemize}
 
 \begin{figure}[!htb]
 \begin{lstlisting}[caption={}]
@@ -39,15 +47,7 @@ endmodule
 \caption{Interface of physical register file and conservative scoreboard}\label{fig:prf-sb-ifc}
 \end{figure}
 
-Now we explain each interface method:
-\begin{itemize}
-    \item Subinterface \emph{write}: provides a vector of methods for instructions that just finish execution to write the data into the physcial register file and set the presence bit.
-    \item Subinterface \emph{read}: provides a vector of methods for instructions at register-read stage to read both the data and presence bit of the source register.
-    In case the presence bit is unset, the method returns \texttt{Invalid}.
-    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
-    this method will be called together with the one in the aggressive scoreboard.
-\end{itemize}
-
+\noindent\textbf{Conflict Matrix:}
 The conflict matrix of the interface methods is:
 \begin{itemize}
     \item read CF \{write, setBusy\}
