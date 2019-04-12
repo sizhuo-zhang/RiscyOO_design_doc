@@ -67,6 +67,9 @@
 
 \newcommand{\mycomment}[1]{\emph{\textcolor{red}{[#1]}}}
 
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\inst}[1]{\textsf{#1}}
+
 \begin{document}
 
 \title{RiscyOO Design Document}
@@ -83,6 +86,8 @@ Some common things:
 \begin{itemize}
     \item Rules in later pipeline stages are ordered before rules in earlier pipeline stages.
 \end{itemize}
+
+\input{kill_scheme}
 
 \input{sb_aggr}
 

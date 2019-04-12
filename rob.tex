@@ -5,94 +5,103 @@ Instructions are enqueued into ROB in order at the renaming stage, and are deque
 Instructions in the execution pipeline will also access the corresponding ROB entry.
 
 \subsection{Interface}
+
+\begin{figure}[!htb]
+    \begin{lstlisting}[caption={}]
+    typedef struct {
+    Addr               pc;
+    IType              iType;
+    Maybe#(CSR)        csr;
+    Bool               claimed_phy_reg;
+    Maybe#(Trap)       trap;
+    PPCVAddrCSRData    ppc_vaddr_csrData;
+    Bit#(5)            fflags;
+    Bool               will_dirty_fpu_state;
+    RobInstState       rob_inst_state;
+    LdStQTag           lsqTag;
+    Maybe#(LdKilledBy) ldKilled;
+    Bool               memAccessAtCommit;
+    Bool               lsqAtCommitNotified;
+    Bool               nonMMIOStDone;
+    Bool               epochIncremented;
+    SpecBits           spec_bits;
+    } ToReorderBuffer deriving(Bits, Eq, FShow);
+    \end{lstlisting}
+    \caption{Fields in an ROB entry}\label{fig:rob-entry}
+\end{figure}
+
 Before introducing the interface of the module, we first explain the fields in an ROB entry.
-Figure~\ref{fig:rob-entry} shows the definition of type ToReorderbuffer which is a struct that contains all the fields in an ROB entry.
+Figure~\ref{fig:rob-entry} shows the definition of type \code{ToReorderbuffer} which is a struct that contains all the fields in an ROB entry.
 Now we explain each field (``the instruction'' refers to the instruction in the ROB entry):
 \begin{itemize}
-    \item \emph{pc}: is the PC of the instruction.
+    \item \code{pc}: is the PC of the instruction.
     It is set when the renaming stage enqueues the instruction into ROB.
-    \item \emph{iType}: is the type (e.g., ALU, load, store, etc.) of the instruction.
+    
+    \item \code{iType}: is the type (e.g., ALU, load, store, etc.) of the instruction.
     It is set when the renaming stage enqueues the instruction into ROB.
-    \item \emph{csr}: is the CSR index to access if the instruction is a CSRRW instruction.
+    
+    \item \code{csr}: is the CSR index to access if the instruction is a \inst{CSRRW} instruction.
     It is set when the renaming stage enqueues the instruction into ROB.
-    \item \emph{claimed\_phy\_reg}: is true if the instruction has claimed a physical register to rename a architectural register.
+    
+    \item \code{claimed\_phy\_reg}: is true if the instruction has claimed a physical register to rename a architectural register.
     It is set when the renaming stage enqueues the instruction into ROB.
     If this field is true, then the instruction needs to release the originally mapped physical register for the renamed architectural register at commit stage.
     This field is always true unless the instructions represents an interrupt (we detect interrupts at renaming stage and encode an interrupt as an instruction in ROB) or the instruction has got an exception before being enqueued into ROB.
-    \item \emph{trap}: is the exception or interrupt associated with the instruction.
+    
+    \item \code{trap}: is the exception or interrupt associated with the instruction.
     It is set when the renaming stage enqueues the instruction into ROB, or when the memory instruction is dequeued from LSQ and it has triggered a memory page fault (or memory access fault) before.
-    \item \emph{ppc\_vaddr\_csrData}: is a tagged union.
+    
+    \item \code{ppc\_vaddr\_csrData}: is a tagged union.
     The field is initially set to the predicted next PC when the instruction is enqueued into ROB at the renaming stage.
     If the instruction is a memory instruction, then the field will be set to the virtual memory address after address translation.
     The virtual address will be used at the commit stage if the instruction triggers a page fault or access fault.
-    If the instruction is a CSRRW instruction that performs a read-modify-write on an CSR, then the field will be set to the original value of the CSR when the instruction leaves the ALU execution pipeline.
+    If the instruction is a \inst{CSRRW} instruction that performs a read-modify-write on an CSR, then the field will be set to the original value of the CSR when the instruction leaves the ALU execution pipeline.
     If the instruction is a branch instruction, then the field will set to the computed next PC when the instruction leaves the ALU execution pipeline.
-    \item \emph{fflags}: is the status flags (e.g., overflow and underflow) of the FPU computation performed by the instruction in case the instruction is an FPU instruction.
+    
+    \item \code{fflags}: is the status flags (e.g., overflow and underflow) of the FPU computation performed by the instruction in case the instruction is an FPU instruction.
     It is set when the FPU computation is done in the execution pipeline.
     It will be used at the commit stage to update an CSR for FPU.
-    \item \emph{will\_dirty\_fpu\_state}: is true if the destination register of the instruction is an floating point register.
+    
+    \item \code{will\_dirty\_fpu\_state}: is true if the destination register of the instruction is an floating point register.
     It is set when the instruction is enqueued into ROB at the renaming stage.
     It will be used at the commit stage to update an CSR for FPU.
-    \item \emph{rob\_inst\_state}: is a single bit to represent if the instruction has finished execution or not.
-    \item \emph{lsqTag}: is the index to LSQ if the instruction is a memory or fence instruction.
-    \item \emph{ldKilled}: is true if the instruction is a load which is killed because the load speculation violates store-to-load memory dependency or memory ordering required by the consistency model.
+    
+    \item \code{rob\_inst\_state}: is a single bit to represent if the instruction has finished execution or not.
+    Its value is either \code{Executed} or \code{NotDone}.
+    
+    \item \code{lsqTag}: is the index to LSQ if the instruction is a memory or fence instruction.
+    
+    \item \code{ldKilled}: is valid if the instruction is a load which is killed because the load speculation violates store-to-load memory dependency or memory ordering required by the consistency model.
+    When the field is invalid, it also records the detailed reason for the kill of the load.
     It is set when the load instruction is dequeued from LSQ.
-    \item \emph{memAccessAtCommit}: is true if the memory instruction must be executed non-speculatively, i.e., the instruction, an MMIO or an atomic (i.e., load-reserve, store-conditional and read-modify-write).
+    
+    \item \code{memAccessAtCommit}: is true if the memory or fence instruction must be executed non-speculatively, i.e., the instruction is a fence, an MMIO or an atomic (i.e., load-reserve, store-conditional and read-modify-write).
     It is set when the instruction finishes translating address.
     If this field is true, the instruction needs to notify LSQ when the instruction reaches the commit slot of the ROB (i.e., becomes the oldest in ROB).
     LSQ can issue this instruction to memory only after receiving the notification.
-    \item \emph{lsqAtCommitNotified}: is true if the instruction has already notified LSQ about reaching the commit slot of ROB.
-    (This field is meaningful only if the memAccessAtCommit field is true.)
+    
+    \item \code{lsqAtCommitNotified}: is true if the instruction has already notified LSQ about reaching the commit slot of ROB.
+    (This field is meaningful only if the \code{memAccessAtCommit} field is true.)
     It prevents repeated notifications to the LSQ.
     It is set when the notification to LSQ happens.
-    \item \emph{nonMMIOStDone}: is true if the instruction is a non-MMIO store and has translated its address and has computed its data, i.e., the store can be considered as executed even though it has not been issued to memory.
+    
+    \item \code{nonMMIOStDone}: is true if the instruction is a non-MMIO store and has translated its address and has computed its data, i.e., the store can be considered as executed even though it has not been issued to memory.
     If this field is true, then the instruction needs to notify LSQ when it is dequeued from ROB at the commit stage.
-    (The lsqAtCommitNotified field does not need to be set because the entry is already dequeued from ROB.)
+    (The \code{lsqAtCommitNotified} field does not need to be set because the entry is already dequeued from ROB.)
     This field is set when the instruction finishes translating address.
-    \item \emph{epochIncremented}: is true if the instruction has incremented the epoch at the renaming stage to drop any future instructions from the fetch stage.
+    
+    \item \code{epochIncremented}: is true if the instruction has incremented the epoch at the renaming stage to drop any future instructions from the fetch stage.
     This field is true only when the instruction represents an interrupt, is a system instruction that needs to be performed in a blocking way, or triggers an exception before being enqueued into ROB.
     If this field is true, then when this instruction is committed, the commit stage does not need to increment the epoch at the renaming stage again when redirecting the fetch stage (the epoch at the fetch stage still needs to be incremented).
     This field is set when the renaming stage enqueues the instruction into ROB.
-    \item \emph{spec\_bits}: is the bit mask to encode all the older unresolved branches, i.e., the misprediction of any such branches will kill this instruction.
-    This field is set when the renaming stage enqueues the instruction into ROB.
+    
+    \item \code{spec\_bits}: is the bit mask to encode all the older unresolved branches (Section~\ref{sec:specupdate}).
 \end{itemize}
 
 \begin{figure}[!htb]
 \begin{lstlisting}[caption={}]
-typedef struct {
-  Addr               pc;
-  IType              iType;
-  Maybe#(CSR)        csr;
-  Bool               claimed_phy_reg;
-  Maybe#(Trap)       trap;
-  PPCVAddrCSRData    ppc_vaddr_csrData;
-  Bit#(5)            fflags;
-  Bool               will_dirty_fpu_state;
-  RobInstState       rob_inst_state;
-  LdStQTag           lsqTag;
-  Maybe#(LdKilledBy) ldKilled;
-  Bool               memAccessAtCommit;
-  Bool               lsqAtCommitNotified;
-  Bool               nonMMIOStDone;
-  Bool               epochIncremented;
-  SpecBits           spec_bits;
-} ToReorderBuffer deriving(Bits, Eq, FShow);
-\end{lstlisting}
-\caption{Fields in an ROB entry}\label{fig:rob-entry}
-\end{figure}
-
-Figures~\ref{fig:rob-subifc} and \ref{fig:rob-ifc} show the interface of ROB.
-The interface parameters aluExeNum and fpuMulDivExeNum are the numbers of ALU execution pipelines and FPU/Int-Multipy/Int-Divide execution pipelines, respectively.
-Now we explain each method in the ROB interface (Figure~\ref{fig:rob-ifc}):
-\begin{itemize}
-    \item Subinterface \emph{enqPort}: 
-\end{itemize}
-
-\begin{figure}[!htb]
-\begin{lstlisting}[caption={}]
-// InstTag is the index of ROB entry
+// InstTag is the index to access an ROB entry
 // ControlFlow is a struct that contains the computed next PC
-// ToReorderBuffer is a struct for an ROB entry
 interface ROB_EnqPort;
   method Bool canEnq;
   method Action enq(ToReorderBuffer x);
@@ -108,13 +117,17 @@ interface ROB_setExecuted_doFinishAlu;
   method Action set(InstTag x, Maybe#(Data) csrData, ControlFlow cf);
 endinterface
 interface ROB_setExecuted_doFinishFpuMulDiv;
-  method Action set(InstTag x, Bit#(5) fflags);
+  method Action set(InstTag x, Bit#(5) new_fflags);
 endinterface
 interface ROB_getOrigPC;
   method Addr get(InstTag x);
 endinterface
 interface ROB_getOrigPredPC;
   method Addr get(InstTag x);
+endinterface
+interface SpeculationUpdate;
+  method Action incorrectSpeculation(Bool kill_all, SpecTag kill_tag);
+  method Action correctSpeculation(SpecBits mask);
 endinterface
 \end{lstlisting}
 \caption{Subinterfaces of ROB}\label{fig:rob-subifc}
@@ -123,6 +136,7 @@ endinterface
 \begin{figure}[!htb]
 \begin{lstlisting}[caption={}]
 // SupSize is the superscalar size
+// InstTime is the conceptual ROB index if ROB were implemented using a circular buffer
 interface SupReorderBuffer#(numeric type aluExeNum, numeric type fpuMulDivExeNum);
   interface Vector#(SupSize, ROB_EnqPort) enqPort;
   method Bool isEmpty;
@@ -132,11 +146,9 @@ interface SupReorderBuffer#(numeric type aluExeNum, numeric type fpuMulDivExeNum
   interface Vector#(aluExeNum, ROB_setExecuted_doFinishAlu) setExecuted_doFinishAlu;
   interface Vector#(fpuMulDivExeNum, ROB_setExecuted_doFinishFpuMulDiv) setExecuted_doFinishFpuMulDiv;
   method Action setExecuted_doFinishMem(InstTag x, Addr vaddr, Bool access_at_commit, Bool non_mmio_st_done);
-  interface Vector#(TAdd#(1, aluExeNum), ROB_getOrigPC) getOrigPC;
+  interface Vector#(aluExeNum, ROB_getOrigPC) getOrigPC;
   interface Vector#(aluExeNum, ROB_getOrigPredPC) getOrigPredPC;
   method InstTime getEnqTime;
-  method Bool isEmpty_ehrPort0;
-  method Bool isFull_ehrPort0;
   interface ROB_SpeculationUpdate specUpdate;
 endinterface
 module mkSupReorderBuffer(SupReorderBuffer#(aluExeNum, fpuMulDivExeNum);
@@ -146,3 +158,78 @@ endmodule
 \caption{Interface of ROB}\label{fig:rob-ifc}
 \end{figure}
 
+Figures~\ref{fig:rob-subifc} and \ref{fig:rob-ifc} show the interface of ROB.
+The interface parameters \code{aluExeNum} and \code{fpuMulDivExeNum} are the numbers of ALU execution pipelines and FPU execution pipelines, respectively.
+Now we explain each method in the ROB interface (Figure~\ref{fig:rob-ifc}):
+\begin{itemize}
+    \item Subinterface \code{enqPort}: provides a vector of methods to enter instructions into ROB at the renaming stage.
+    ROB-entry fields \code{ldKilled}, \code{lsqAtCommitNotified}, and \code{nonMMIOStDone} are self-initialized to false or invalid.
+    Field \code{memAccessAtCommit} is self-initialized to true if the instruction is a fence.
+    All other fields are initialized by taking directly the values from the method argument.
+    The enqueue methods have to be called consecutively, i.e., it is legal to call \code{enqPort[0]} and then \code{enqPort[1]}, but it is illegal to skip \code{enqPort[0]} and directly call \code{enqPort[1]}.
+    
+    \item Subinterface \code{isEmpty}: return true if the ROB is empty.
+    
+    \item Subinterface \code{deqPort}: provides a vector of methods to dequeue instructions from ROB at the commit stage.
+    The guard of the dequeue method only checks if the dequeuing entry is valid or not, i.e., the commit stage should check whether the instruction can really commit (e.g., has finished execution or not).
+    Similar to \code{enqPort}, the dequeue methods also need to be called consecutively, i.e., cannot skip \code{deqPort[0]} and call \code{deqPort[1]} directly.
+    
+    \item Method \code{setLSQAtCommitNotified}: sets the \code{lsqAtCommitNotified} field to true.
+    
+    \item Method \code{setExecuted\_deqLSQ}: is called when a memory instruction which is not a non-MMIO store gets dequeued from LSQ (a non-MMIO store is dequeued from LSQ after it is dequeued from ROB).
+    The method sets field \code{rob\_inst\_state} to \code{Executed}.
+    It also sets field \code{trap} if \code{trap} is originally invalid and method argument \code{cause} is valid.
+    It also sets field \code{ldKilled} if argument \code{ld\_killed} is valid.
+    
+    \item Subinterface \code{setExecuted\_doFinishAlu}: provides a vector of methods for instructions at the end of ALU execution pipelines to notify the ROB that execution is done.
+    The method sets field \code{rob\_inst\_state} to \code{Executed}.
+    If method argument \code{csrData} is valid (i.e., the instruction is \inst{CSRRW}), then it sets field \code{ppc\_vaddr\_csrData} to \code{csrData} (i.e., the original CSR value).
+    Otherwise, it sets the field to the computed next PC contained in argument \code{cf}.
+    
+    \item Subinterface \code{setExecuted\_doFinishFpuMulDiv}: provides a vector of methods for instructions at the end of FPU execution pipelines to notify the ROB that execution is done.
+    The method sets field \code{rob\_inst\_state} to \code{Executed}, and sets field \code{fflags} to method argument \code{new\_fflags}.
+    
+    \item Method \code{setExecuted\_doFinishMem}: is called by memory instructions that has translated their addresses.
+    The method sets field \code{ppc\_vaddr\_csrData} to method argument \code{vaddr} (the virtual address of the memory address), sets field \code{memAccessAtCommit} to argument \code{access\_at\_commit}, and sets field \code{nonMMIOStDone} to argument \code{non\_mmio\_st\_done}.
+    If argument \code{non\_mmio\_st\_done} is true, then it also sets field \code{rob\_inst\_state} to \code{Executed}.
+    
+    \item Subinterface \code{getOrigPC}: provides a vector of methods for instructions in the ALU pipeline to retrieve their PCs.
+    
+    \item Subinterface \code{getOrigPredPC}: provides a vector of methods for instructions in the ALU pipeline to retrieve the predicted next PCs (by the fetch stage) of them.
+    
+    \item Method \code{getEnqTime}: returns the conceptual enqueue pointer of ROB if ROB were implemented using a circular buffer.
+    (ROB is implemented as a more complicated structure than a circular buffer, but it still behaves as if it were a circular buffer.)
+    This method is called every cycle and the return value is passed to each reservation station to identify older instructions and prioritize them in issuing.
+    
+    \item Subinterface \code{specUpdate}: provides methods to manage speculative instructions.
+\end{itemize}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods are:
+\begin{itemize}
+    \item \code{deqPort[0]} $<$ $\cdots$ $<$ \code{deqPort[SupSize-1]} $<$ \code{setExecuted\_doFinishAlu[0]} $<$ $\cdots$ $<$ \code{setExecuted\_doFinishAlu[aluExeNum-1]} $<$ \code{setExecuted\_doFinishFpuMulDiv[0]} $<$ $\cdots$ $<$ \code{setExecuted\_doFinishFpuMulDiv[fpuMulDivNum-1]} $<$ \code{setExecuted\_deqLSQ} $<$ \code{setExecuted\_doFinishMem} $<$ \code{enqPort[0]} $<$ $\cdots$ $<$ \code{enqPort[SupSize-1]}
+    \item \code{deqPort} $<$ \code{setLSQAtCommitNotified} $<$ \code{enqPort}
+    \item \code{deqPort} $<$ \code{incorrectSpeculation} $<$ \code{correctSepculation}
+    \item \code{incorrectSpeculation} C \code{enqPort}
+    \item \code{enqPort} $<$ \code{correctSpeculation}
+    \item \code{getOrigPC} $<$ \code{enqPort}
+    \item \code{getEnqTime} $<$ \code{enqPort}
+    \item All other pairs of methods are conflict free.
+\end{itemize}
+
+We order \code{deqPort} before everything else because \code{deqPort} is called at the commit stage which is the last stage in the processor pipeline.
+
+We order \code{enqPort} after almost every other method because \code{enqPort} is called at the renaming stage while other methods are called at later stages.
+The only exceptions are the \code{incorrectSpeculation} and \code{correctSpeculation} methods in the \code{specUpdate} subinterface.
+We order \code{enqPort} before \code{correctSpecUpdate} because of the scheduling convention to put \code{correctSpecUpdate} at the last.
+We make \code{enqPort} and \code{incorrectSpeculation} conflict because the newly enqueued instructions must be at the wrong path if ROB needs to be squashed.
+
+The orderings between \code{setExecuted\_XXX} methods are kind of arbitrary because these methods should be called for different instructions.
+Nevertheless, we have to give an ordering for them because the BSC compiler believes they can write the same entry.
+These orderings should be consistent with the orderings of the top-level rules that call these methods, and with the ordering of other modules called by these rules.
+For example, we order \code{setExecuted\_deqLSQ} before \code{setExecuted\_doFinishMem} to match the conflict matrix of LSQ.
+
+Although subinterface \code{getOrigPredPC} reads ROB-entry field \code{ppc\_vaddr\_csrData} which is written by \code{enqPort}, \code{setExecuted\_doFinishAlu} and \code{setExecuted\_doFinishMem}, we still make \code{getOrigPredPC} conflict free with all these methods.
+This is because if these methods are called in the same cycle, they must be accessing different ROB entries.
+
+\subsection{Implementation}
