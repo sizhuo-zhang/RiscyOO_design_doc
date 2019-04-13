@@ -4,30 +4,30 @@ The ROB keeps all the in-flight instructions that have been renamed but not comm
 Instructions are enqueued into ROB in order at the renaming stage, and are dequeued from the ROB in order at the commit stage.
 Instructions in the execution pipeline will also access the corresponding ROB entry.
 
-\subsection{Interface}
+\subsubsection{Interface}
 
 \begin{figure}[!htb]
-    \begin{lstlisting}[caption={}]
-    typedef struct {
-    Addr               pc;
-    IType              iType;
-    Maybe#(CSR)        csr;
-    Bool               claimed_phy_reg;
-    Maybe#(Trap)       trap;
-    PPCVAddrCSRData    ppc_vaddr_csrData;
-    Bit#(5)            fflags;
-    Bool               will_dirty_fpu_state;
-    RobInstState       rob_inst_state;
-    LdStQTag           lsqTag;
-    Maybe#(LdKilledBy) ldKilled;
-    Bool               memAccessAtCommit;
-    Bool               lsqAtCommitNotified;
-    Bool               nonMMIOStDone;
-    Bool               epochIncremented;
-    SpecBits           spec_bits;
-    } ToReorderBuffer deriving(Bits, Eq, FShow);
-    \end{lstlisting}
-    \caption{Fields in an ROB entry}\label{fig:rob-entry}
+\begin{lstlisting}[caption={}]
+typedef struct {
+  Addr               pc;
+  IType              iType;
+  Maybe#(CSR)        csr;
+  Bool               claimed_phy_reg;
+  Maybe#(Trap)       trap;
+  PPCVAddrCSRData    ppc_vaddr_csrData;
+  Bit#(5)            fflags;
+  Bool               will_dirty_fpu_state;
+  RobInstState       rob_inst_state;
+  LdStQTag           lsqTag;
+  Maybe#(LdKilledBy) ldKilled;
+  Bool               memAccessAtCommit;
+  Bool               lsqAtCommitNotified;
+  Bool               nonMMIOStDone;
+  Bool               epochIncremented;
+  SpecBits           spec_bits;
+} ToReorderBuffer deriving(Bits, Eq, FShow);
+\end{lstlisting}
+\caption{Fields in an ROB entry}\label{fig:rob-entry}
 \end{figure}
 
 Before introducing the interface of the module, we first explain the fields in an ROB entry.
@@ -221,8 +221,6 @@ The conflict matrix of the interface methods are:
     \item \code{deqPort} $<$ \code{incorrectSpeculation} $<$ \code{correctSepculation}
     \item \code{incorrectSpeculation} C \code{enqPort}
     \item \code{enqPort} $<$ \code{correctSpeculation}
-    \item \code{getOrigPC} $<$ \code{enqPort}
-    \item \code{getEnqTime} $<$ \code{enqPort}
     \item All other pairs of methods are conflict free.
 \end{itemize}
 
@@ -232,16 +230,28 @@ We order \code{enqPort} after almost every other method because \code{enqPort} i
 The only exceptions are the \code{incorrectSpeculation} and \code{correctSpeculation} methods in the \code{specUpdate} subinterface.
 We order \code{enqPort} before \code{correctSpecUpdate} because of the scheduling convention to put \code{correctSpecUpdate} at the last.
 We make \code{enqPort} and \code{incorrectSpeculation} conflict because the newly enqueued instructions must be at the wrong path if ROB needs to be squashed.
+We do not make \code{incorrectSpeculation} conflict with \code{deqPort} because they may be called together in the commit stage.
+The ordering between \code{incorrectSpeculation} and \code{correctSpeculation} does not matter because they are never called in the same cycle.
 
-The orderings between \code{setExecuted\_XXX} methods are kind of arbitrary because these methods should be called for different instructions.
+The orderings between \code{setExecuted\_XXX} methods (we use \code{setExecuted\_XXX} to denote all the methods starting with \code{setExecuted}) are kind of arbitrary because these methods should be called for different instructions.
 Nevertheless, we have to give an ordering for them because the BSC compiler believes they can write the same entry.
 These orderings should be consistent with the orderings of the top-level rules that call these methods, and with the ordering of other modules called by these rules.
 For example, we order \code{setExecuted\_deqLSQ} before \code{setExecuted\_doFinishMem} to match the conflict matrix of LSQ.
 
 Although subinterface \code{getOrigPredPC} reads ROB-entry field \code{ppc\_vaddr\_csrData} which is written by \code{enqPort}, \code{setExecuted\_doFinishAlu} and \code{setExecuted\_doFinishMem}, we still make \code{getOrigPredPC} conflict free with all these methods.
-This is because if these methods are called in the same cycle, they must be accessing different ROB entries.
+This is because if these methods are called in the same cycle, they are guaranteed to access different ROB entries at the top level.
+It should be noted that giving an ordering between \code{getOrigPredPC} and \code{setExecuted\_doFinishAlu} may create inefficiency.
+Consider the case that we order \code{getOrigPredPC} after \code{setExecuted\_doFinishAlu} because \code{getOrigPredPC} is called in earlier pipeline stage.
+Then, there is a bypass path from \code{setExecuted\_doFinishAlu} to \code{getOrigPredPC} which can never be activated.
+Setting two methods as conflict free avoids this inefficiency.
 
-\subsection{Implementation}
+A similar reasoning could explain why \code{getOrigPC} is conflict free with \code{enqPort}.
+Since \code{getEnqTime} is just for determining the issue priority and does not affect correctness, we also make it conflict free with \code{enqPort}.
+
+It should be noted that making \code{getOrigPredPC}, \code{getOrigPC} and \code{getEnqTime} before \code{enqPort} actually matches our scheduling convention (i.e., reverse pipeline order).
+Thus, we may consider adding these orderings in future implementations.
+
+\subsubsection{Implementation}
 We use a set of EHRs to keep the content of an ROB entry, one EHR per field and an additional EHR for the valid bit.
 Although the ROB entries are conceptually organized as a circular buffer, we do not implement it in that way.
 The reason is to save the area for implementing superscalar enqueue and dequeue.
@@ -268,3 +278,51 @@ With the above implementation, each dequeue/enqueue only access a single FIFO, w
 We also need to rotate the enqueue or dequeue data to match the correct FIFOs, and this rotation will cost $O($\code{SupSize}$)$ units of area.
 Thus, the total area cost is $N +O($\code{SupSize}$)$ units of area.
 
+Methods \code{setExecuted\_XXX}, \code{setLSQAtCommitNotified}, \code{getOrig} and \code{correctSpeculation} access the EHRs for ROB entries directly.
+However, methods \code{deqPort}, \code{enqPort}, and \code{incorrectSpeculation} do not access EHRs directly.
+These three methods simply record their arguments in wires, and the real actions are taken in three canonicalize rules, i.e., \code{canon\_deq}, \code{canon\_enq}, and \code{canon\_wrongSpec}, respectively.
+Using canonicalize rules makes it easy to handle superscalar enqueues and dequeues.
+The canonicalize rules enforce the ordering semantics of the conflict matrix and we artificially impose orderings between these methods (e.g., by reading and writing dummy registers).
+The following orderings need to be created artificially:
+\begin{itemize}
+    \item \code{deqPort} $<$ \code{enqPort}
+    \item \code{setExecuted\_XXX} $<$ \code{enqPort}
+    \item \code{setLSQAtCommitNotified} $<$ \code{enqPort}
+    \item \code{incorrectSpeculation} C \code{enqPort}
+    \item \code{deqPort} $<$ \code{incorrectSpeculation}
+\end{itemize}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix for the methods and rules that access EHRs directly is the following:
+\begin{itemize}
+    \item \code{canon\_deq} $<$ \code{setExecuted\_XXX} $<$ \code{canon\_enq} $<$ \code{correctSpeculation}
+    \item \code{canon\_deq} $<$ \code{setLSQAtCommitNotified} $<$ \code{canon\_enq}
+    \item \code{canon\_enq} mutually exclusive with \code{canon\_wrongSpec}
+    \item \code{canon\_deq} $<$ \code{canon\_wrongSpec} $<$ \code{correctSpeculation}
+\end{itemize}
+These methods and rules will access EHRs using the ports according to this conflict matrix
+
+Since other methods are conflict free with each other, they may either directly access the EHRs with port 0 or access indirectly using wires.
+
+We also made one slight optimization on the guard signal of \code{enqPort}.
+That is, the evaluation of the enqueue guard ignores the effects of dequeues.
+This cut off the combinational path from dequeue to enqueue.
+
+\subsubsection{Source Code}
+See the following:
+\begin{itemize}
+    \item module \code{mkReorderBufferSynth} in file \code{//procs/RV64G\_OOO/ReorderBufferSynth.bsv}, and
+    \item module \code{mkSupReorderBuffer} in file \code{//procs/lib/ReorderBuffer.bsv}.
+\end{itemize}
+
+\subsubsection{Future Improvement}
+Below are the possible future improvements:
+\begin{itemize}
+    \item Order methods \code{getOrigPredPC}, \code{getOrigPC} and \code{getEnqTime} before \code{enqPort} as explained above.
+    
+    \item See if it is possible for \code{enqPort}, \code{deqPort} and \code{incorrectSpeculation} methods to directly access EHRs.
+    This can reduce the amount of wires.
+    How much is the cost of doing so?
+    
+    \item Explore alternative organizations of ROB entries. Can we get some information about commercial designs?
+\end{itemize}
