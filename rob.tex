@@ -96,6 +96,8 @@ Now we explain each field (``the instruction'' refers to the instruction in the 
     This field is set when the renaming stage enqueues the instruction into ROB.
     
     \item \code{spec\_bits}: is the bit mask to encode all the older unresolved branches (Section~\ref{sec:specupdate}).
+    This field is in fact not truly used in squashing wrong-path instructions, because ROB keeps all instructions in order and squash can be performed according to the ROB index of the mispredicted branch.
+    It is kept for sanity checks in simulation.
 \end{itemize}
 
 \begin{figure}[!htb]
@@ -125,8 +127,8 @@ endinterface
 interface ROB_getOrigPredPC;
   method Addr get(InstTag x);
 endinterface
-interface SpeculationUpdate;
-  method Action incorrectSpeculation(Bool kill_all, SpecTag kill_tag);
+interface ROB_SpeculationUpdate;
+  method Action incorrectSpeculation(Bool kill_all, SpecTag spec_tag, InstTag inst_tag);
   method Action correctSpeculation(SpecBits mask);
 endinterface
 \end{lstlisting}
@@ -201,7 +203,14 @@ Now we explain each method in the ROB interface (Figure~\ref{fig:rob-ifc}):
     (ROB is implemented as a more complicated structure than a circular buffer, but it still behaves as if it were a circular buffer.)
     This method is called every cycle and the return value is passed to each reservation station to identify older instructions and prioritize them in issuing.
     
-    \item Subinterface \code{specUpdate}: provides methods to manage speculative instructions.
+    \item Method \code{incorrectSpeculation} of subinterface \code{specUpdate}: squashes all or part of the ROB entries.
+    If method argument \code{kill\_all} is true, then all ROB entries are squashed.
+    This happens when commit stage commits an exception, or an interrupt, or a load that violates memory ordering.
+    If \code{kill\_all} is false, then only entries younger than ROB index \code{inst\_tag} (the third method argument) are squashed.
+    This happens when a branch is resolved and turns out to be mispredicted.
+    The second argument \code{spec\_tag} is just for sanity checks in simulation.
+    
+    \item Method \code{correctSpeculation} of subinterface \code{specUpdate}: is to clear bits in field \code{spec\_bits} according to method argument \code{mask} (same as the method in the normal \code{SpeculationUpdate} interface described in Section~\ref{sec:specupdate}).
 \end{itemize}
 
 \noindent\textbf{Conflict Matrix:}
@@ -233,3 +242,29 @@ Although subinterface \code{getOrigPredPC} reads ROB-entry field \code{ppc\_vadd
 This is because if these methods are called in the same cycle, they must be accessing different ROB entries.
 
 \subsection{Implementation}
+We use a set of EHRs to keep the content of an ROB entry, one EHR per field and an additional EHR for the valid bit.
+Although the ROB entries are conceptually organized as a circular buffer, we do not implement it in that way.
+The reason is to save the area for implementing superscalar enqueue and dequeue.
+Consider the case that we implement ROB as a circular buffer, i.e., a vector of $N$ entries.
+In this case, each dequeue/enqueue on the ROB will read/write one of the $N$ entries, costing $N$ units of area.
+The total cost of implementing superscalar dequeue/enqueue is $N \times$\code{SupSize} units of area.
+The way we implement the ROB can reduce this cost down to $N +O($\code{SupSize}$)$ units of area.
+
+Figure~\ref{fig:rob-rotate-fifos} shows our implementation of ROB.
+The ROB entries are organized as a \code{SupSize} FIFOs.
+The enqueue port enqueues the FIFOs in a round-robin manner.
+For example, consider the case \code{SupSize}=4, and initially ROB is empty.
+At cycle 0, we perform 3 enqueues on FIFOs Q[0], Q[1], Q[2], respectively.
+At cycle 1, if we perform 2 enqueues, then we will first enqueue Q[3] and then enqueue Q[0].
+Dequeues are also performed in the round-robin manner.
+
+\begin{figure}[!htb]
+    \centering
+    \includegraphics[width=0.6\columnwidth]{fig/rob_rotate_fifos_crop.pdf}
+    \caption{Organizing ROB entries a set of FIFOs}\label{fig:rob-rotate-fifos}
+\end{figure}
+
+With the above implementation, each dequeue/enqueue only access a single FIFO, which has $N$/\code{SupSize} entries.
+We also need to rotate the enqueue or dequeue data to match the correct FIFOs, and this rotation will cost $O($\code{SupSize}$)$ units of area.
+Thus, the total area cost is $N +O($\code{SupSize}$)$ units of area.
+
