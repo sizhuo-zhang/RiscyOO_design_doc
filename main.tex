@@ -92,6 +92,11 @@ The main processor pipeline is the following:
 The rename stage divides the processor core into the front-end and the back-end.
 The front-end, i.e., the fetch pipeline, is an in-order pipeline, while out-of-order execution happens all in the back-end.
 
+An instruction is fetched and decoded in the fetch pipeline.
+The rename stage performs register renaming and enters the instruction int ROB and one of the execution pipelines.
+When the instruction finishes execution and leaves the execution pipeline, it notifies the ROB that it is executed.
+Finally the commit stage commits instructions from ROB in order.
+
 The processor core is also superscalar.
 The fetch pipeline, rename stage and commit stage can all handle multiple instructions in one cycle.
 The size of superscalarity is represented by numeric type \code{SupSize} in the source code and in the rest of this document.
@@ -105,10 +110,24 @@ However, there can only be one memory execution pipeline
     \caption{Overall structure of the processor core}\label{fig:core}
 \end{figure}
 
+\noindent\textbf{Scheduling Convention:}
 Since there are many modules in the core, assigning conflict matrices to different module interfaces to maximize the concurrency of rules can be difficult.
 To simplify the problem, we following the convention of \emph{reverse pipeline ordering} in assigning conflict matrices.
 That is, rules representing later stages in the processor pipeline (e.g., commit) are ordered before rules representing earlier stages (e.g., rename), and thus, interface methods called in later stages are ordered before methods called in earlier stages.
 
+\noindent\textbf{System Instructions:}
+Some instructions can change the context of the processor and are difficult to be executed out of order or concurrently with other instructions.
+These instructions are called \emph{system instructions}, and include the following instructions:
+\begin{itemize}
+    \item \inst{ECALL} which makes a system call,
+    \item \inst{EBREAK} which traps for debugger,
+    \item \inst{SRET} and \inst{MRET} which return from trap handling,
+    \item \inst{SFENCE.VMA} which flushes the TLBs, and
+    \item \inst{FENCE.I} which is used for self-modifying code.
+\end{itemize}
+System instructions are executed in a blocking way, i.e., the instruction will be the only instruction in the ROB.
+
+\noindent\textbf{Organization:}
 In the rest of this section, we first introduce the general mechanism to control speculation in the back-end (Section~\ref{sec:specupdate}), and then describe each modules and top-level rules.
 
 \input{kill_scheme}
