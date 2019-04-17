@@ -203,14 +203,7 @@ Now we explain each method in the ROB interface (Figure~\ref{fig:rob-ifc}):
     (ROB is implemented as a more complicated structure than a circular buffer, but it still behaves as if it were a circular buffer.)
     This method is called every cycle and the return value is passed to each reservation station to identify older instructions and prioritize them in issuing.
     
-    \item Method \code{incorrectSpeculation} of subinterface \code{specUpdate}: squashes all or part of the ROB entries.
-    If method argument \code{kill\_all} is true, then all ROB entries are squashed.
-    This happens when commit stage commits an exception, or an interrupt, or a load that violates memory ordering.
-    If \code{kill\_all} is false, then only entries younger than ROB index \code{inst\_tag} (the third method argument) are squashed.
-    This happens when a branch is resolved and turns out to be mispredicted.
-    The second argument \code{spec\_tag} is just for sanity checks in simulation.
-    
-    \item Method \code{correctSpeculation} of subinterface \code{specUpdate}: is to clear bits in field \code{spec\_bits} according to method argument \code{mask} (same as the method in the normal \code{SpeculationUpdate} interface described in Section~\ref{sec:specupdate}).
+    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}).
 \end{itemize}
 
 \noindent\textbf{Conflict Matrix:}

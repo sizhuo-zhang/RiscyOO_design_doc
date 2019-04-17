@@ -1,3 +1,75 @@
-\subsection{Managing Speculative Instructions}\label{sec:specupdate}
+\subsection{Managing Speculative and Wrong-Path Instructions}\label{sec:specupdate}
 
-\mycomment{TODO: talk about basic specBits, specTag, specUpdate.}
+Almost all instructions in the processor are speculative and may be at the wrong path, so we need to have some way to manage speculation and squash wrong-path instructions.
+Since the front-end is in-order while the back-end is out-of-order, we use different schemes in the front-end and the back-end, and we explain each of the schemes next.
+
+\subsubsection{Front-End}
+The rename stage kills wrong-path instructions from the front-end (i.e., the fetch pipeline) based on the epoch in the \emph{epoch manager} (Section \mycomment{XXX}).
+The fetch pipeline contains a copy of the epoch, and every fetched instruction will carry the epoch value.
+At the rename stage, instructions with epochs not equal to the epoch value in the epoch manager are killed.
+Whenever the PC register in the fetch pipeline needs to be redirected (because of branch mispredictions, exceptions, interrupts, or mis-speculative loads), the epoch in the epoch manager will be incremented either at the redirect time or slightly earlier.
+When the PC in the fetch pipeline is truly redirected, the epoch copy in the fetch pipeline is also incremented.
+
+Since there can be multiple consecutive redirections in the back-end, the epoch in the epoch manager should have multiple bits.
+The epoch manager will recycle unused epoch values based on the epoch values of instructions seen at the rename stage.
+
+\subsubsection{Back-End}
+We use two approaches to perform squashes in the back-end:
+\begin{enumerate}
+    \item We delay the squash and redirection until the commit stage.
+    At that time, we can simply kill every instruction in the back-end.
+    \item We squash wrong-path instruction and redirect PC immediately when we find a redirection is needed (e.g., when a branch turns out to be mispredicted).
+    The challenge is that we should squash only instruction younger than the instruction that triggers the redirection.
+\end{enumerate}
+We use the first approach for uncommon redirections, i.e., exceptions, interrupts, and the replay of mis-speculative loads that violate memory ordering.
+We use the second approach for branch mispredictions only.
+The implementation of these two approaches consists of the following three parts.
+
+\noindent\textbf{Speculation tags and bit masks to track dependency on branches:}
+To correctly kill wrong-path instructions in case of branch mispredictions, we assign a unique \emph{speculation tag} (type \code{SpecTag} in the source code) to each branch at the rename stage.
+Every instruction will also be assigned with a speculation bit mask (type \code{SpecBits} in the source code) at the rename stage.
+Each bit in the bit mask corresponds to a speculation tag.
+If the bit is set, then the instruction should be killed in case the branch holding the speculation tag is mispredicted.
+If a branch turns out to be predicted correctly, then the corresponding bit should be cleared from all instructions in the back-end. 
+The \emph{speculation tag manager} (Section \mycomment{XXX}) assigns and recycles speculation tags, and also assigns speculation bit masks.
+
+\noindent\textbf{Module interface to manipulate speculative instructions:}
+Every module in the back-end that keeps speculative instructions should also keep the speculation bit mask for each instruction.
+The module also needs to provide interface methods to allow top-level rules to squash speculative instructions or clear speculation bit masks.
+All modules that keep speculative instructions except ROB provides the \code{SpeculationUpdate} interface in Figure~\ref{fig:specupdate-ifc}.
+ROB provides the \code{ROB\_SpeculationUpdate} interface in Figure~\ref{fig:specupdate-ifc}.
+
+In both interfaces, method \code{correctSpeculation} clears the speculation bit mask of each instruction in the module saccording to argument \code{mask}.
+This method is called when a branch resolves to be predicted correctly.
+Since multiple branches can be resolved (to be predicted correctly) in the same cycle, we use argument \code{mask} to encode the speculation tags of all these branches.
+
+In both interfaces, method \code{incorrectSpeculation} squashes wrong-path instructions.
+If argument \code{kill\_all} is true, then all instructions in the module are squashed.
+This happens when commit stage commits an exception, or an interrupt, or a load that violates memory ordering.
+Otherwise, only instructions whose speculation bit mask contains the speculation tag in argument \code{spec\_tag} will be squashed.
+This happens when a branch is resolved and turns out to be mispredicted.
+It should be noted that there can only be one source of squashing in each cycle.
+In case of the ROB module, the third argument \code{inst\_tag} is the ROB index of the mispredicted branch.
+It is used to simplify the squashing logic in ROB.
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface SpeculationUpdate;
+  method Action incorrectSpeculation(Bool kill_all, SpecTag kill_tag);
+  method Action correctSpeculation(SpecBits mask);
+endinterface
+interface ROB_SpeculationUpdate;
+  method Action incorrectSpeculation(Bool kill_all, SpecTag spec_tag, InstTag inst_tag);
+  method Action correctSpeculation(SpecBits mask);
+endinterface
+\end{lstlisting}
+\caption{Interface methods to manipulate speculation bit masks of modules that keep speculative instructions}\label{fig:specupdate-ifc}
+\end{figure}
+
+\noindent\textbf{Centralized entry point for manipulating speculative instructions:}
+The commit stage or the branch-resolve rule does not call directly the \code{SpeculationUpdate} interface of every module to clear speculation bit masks or squashing instructions.
+Instead, they both call the interface of the \emph{global speculation updater} (Section \mycomment{XXX}), which is the centralized entry point for manipulating speculative instructions.
+The global speculation updater merges requests to clear speculation bit masks and then call the \code{correctSpeculation} method of every module.
+It also arbitrate between requests to squash instructions and then call the \code{incorrectSpeculation} method of every module.
+To some degree, having a centralized the entry point simplifies the broadcast logic for manipulating speculative instructions.
+
