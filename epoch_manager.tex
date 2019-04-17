@@ -1,0 +1,65 @@
+\subsection{Epoch Manager}
+
+The epoch manager manages the epoch that is used to kill wrong-path instructions at the rename stage.
+Each time a redirection happens, the epoch is incremented by one, so the epoch value will change as follows (\code{NumEpochs} is the number of unique epoch values):
+\begin{center}
+    0 $\rightarrow$ 1 $\rightarrow$ $\cdots$ $\rightarrow$ \code{NumEpochs}$-1$ $\rightarrow$ 0 $\rightarrow$ $\cdots$
+\end{center}
+The module also tracks the range of epoch values being used by instructions in the fetch pipeline.
+The epoch cannot be incremented if the next epoch value falls within the range.
+The range is updated by looking at the epochs of instructions coming out of the fetch pipeline.
+
+\subsubsection{Interface}
+Figure~\ref{fig:epoch-ifc} shows the interface of the epoch manager.
+Now we explain each interface method:
+\begin{itemize}
+    \item Subinterface \code{checkEpoch}: provides a vector of methods for the rename stage to check if an instruction is at the wrong path.
+    The input argument \code{e} is the epoch carried by the instruction.
+    The method compares \code{e} with the internal epoch of the module, and returns false if the instruction is at the wrong path and should be killed.
+    
+    \item Subinterface \code{updatePrevEpoch}: provides a vector of methods to update the latest epoch values seen from the fetch pipeline.
+    Every instruction that arrives at the rename stage (including wrong-path instructions) will call this method to help the module recycle unused epoch values.
+    
+    \item Method \code{incrementEpoch}: is called when PC needs to be redirect.
+    This method increased the internal epoch of the module.
+    The guard will be false if the next value of the epoch is not yet recycled (i.e., still being used by instructions in the fetch pipeline).
+\end{itemize}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface EM_checkEpoch;
+  method Bool check(Epoch e);
+endinterface
+interface EM_updatePrevEpoch;
+  method Action update(Epoch e);
+endinterface
+interface EpochManager;
+  interface Vector#(SupSize, EM_checkEpoch) checkEpoch;
+  interface Vector#(SupSize, EM_updatePrevEpoch) updatePrevEpoch;
+  method Epoch getEpoch;
+  method Action incrementEpoch;
+endinterface
+\end{lstlisting}
+\caption{Interface of epoch manager}\label{fig:epoch-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{enumerate}
+    \item \code{checkEpoch} $<$ \code{incrementEpoch}
+    \item \code{updatePrevEpoch} CF \{\code{checkEpoch}, \code{incrementEpoch}\}
+\end{enumerate}
+We make method \code{updatePrevEpoch} conflict free with other methods, because the recycle of unused epoch values does not need to happen immediately.
+
+\subsubsection{Implementation}
+The module has two internal registers \code{curr\_epoch} and \code{prev\_checked\_epoch}.
+\code{curr\_epoch} is the current epoch value which is used to kill wrong-path instructions at the rename stage.
+\code{prev\_checked\_epoch} is the last seen epoch value from the fetch pipeline.
+Thus, the range of epoch values being used is: \code{prev\_checked\_epoch}, \code{prev\_checked\_epoch}$+1$, $\ldots$, \code{curr\_epoch}.
+
+Methods \code{checkEpoch} and \code{incrementEpoch} access directly the registers.
+For subinterface \code{updatePrevEpoch}, we first capture its arguments in wires, and then update the \code{prev\_checked\_epoch} register.
+Wires are ok because \code{updatePrevEpoch} is conflict free with other methods.
+
+\subsubsection{Source Code}
+See module \code{mkEpochManager} in \code{//procs/lib/EpochManager.bsv}.        
