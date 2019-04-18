@@ -1,0 +1,125 @@
+\subsection{Reservation Station}\label{sec:rs}
+Reservation station is the first module of every execution pipeline.
+Rename stage enters instructions into one of the reservation stations.
+The module tracks whether unissued instructions are ready to issue to execution, and schedules ready instructions to issue.
+
+\subsubsection{Interface}\label{sec:rs:ifc}
+Figure~\ref{fig:rs-ifc} shows the module interface of the reservation station.
+Type \code{ToReservationStation} contains all the fields in a reservation-station entry:
+\begin{itemize}
+    \item Field \code{data}: is the information that an instruction wants to store in the entry.
+    Its type is parameterized
+    \item Field \code{regs}: is the indexes of the physical registers used by the instruction.
+    \item Field \code{spec\_bits}: is speculation bit mask of the instruction.
+    \item Field \code{spec\_tag}: is the speculation tag of the instruction if it is a branch.
+    In future implementations, this field should be moved into the \code{data} field to save area, because not all instruction need this field.
+    \item Field \code{regs\_ready}: is the register presence bits of all the source registers of the instruction.
+\end{itemize}
+Interface \code{ReservationStation} has three type parameters:
+\begin{itemize}
+    \item Numeric type \code{size}: is the number of entries in the reservation station.
+    \item Numeric type \code{setRegReadyNum}: is the number of concurrent wakeups.
+    \item Type \code{a}: is the type parameter for \code{ToReservationStation}.
+\end{itemize}
+Now we explain each interface method:
+\begin{itemize}
+    \item Method \code{enq}: enters an instruction into the reservation station.
+    \item Method \code{canEnq}: returns the guard of method \code{enq}, i.e., whether there is a free entry.
+    \item Method \code{setRobEnqTime}: tells the module about the conceptual enqueue pointer of ROB.
+    This information is used in the age-based scheduling policy, i.e., older instructions have higher priority in being issued.
+    \item Method \code{dispatchData}: returns the ready entry that is scheduled to be issued.
+    The guard is false if there is no entry to issue.
+    \item Method \code{doDispatch}: removes the ready entry that is scheduled to be issued from the module.
+    \item Subinterface \code{setRegReady}: provides a vector of methods to wake up instructions, i.e., a physical register becomes ready.
+    \item Method \code{approximateCount}: returns the approximate number of occupied entries in the module.
+    The result is used by the rename stage as a heuristic to choose which reservation station to enter an instruction if there are multiple identical execution pipelines (e.g., there can be two ALU pipelines).
+    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+\end{itemize}
+
+\begin{figure}[t]
+\begin{lstlisting}[caption={}]
+typedef struct {
+  a data;
+  PhyRegs regs;
+  InstTag tag;
+  SpecBits spec_bits;
+  Maybe#(SpecTag) spec_tag;
+  RegsReady regs_ready;
+} ToReservationStation#(type a) deriving(Bits, Eq, FShow);
+interface ReservationStation#(numeric type size, numeric type setRegReadyNum, type a);
+  method Action enq(ToReservationStation#(a) x);
+  method Bool canEnq;
+  method Action setRobEnqTime(InstTime t);
+  method ToReservationStation#(a) dispatchData;
+  method Action doDispatch;
+  interface Vector#(setRegReadyNum, Put#(Maybe#(PhyRIndx))) setRegReady;
+  method Bit#(TLog#(TAdd#(size, 1))) approximateCount;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkReservationStation(ReservationStation#(size, setRegReadyNum, a));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of reservation station}\label{fig:rs-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the module is:
+\begin{itemize}
+    \item \code{setRegReady[0]} $<$ \code{setRegReady[1]} $<$ $\cdots$ $<$ \code{setRegReady[setRegReadyNum-1]}
+    \item \{\code{setRegReady}, \code{dispatchData}, \code{doDispatch}, \code{canEnq}\} $<$ \code{enq}
+    \item \code{setRobEnqTime} $<$ \code{dispatchData} $<$ \code{doDispatch}
+    \item \code{dispatchData} $<$ \code{incorrectSpeculation}
+    \item \code{incorrectSpeculation} C \{\code{enq}, \code{doDispatch}\}
+    \item \{\code{enq}, \code{dispatchData}, \code{doDispatch}, \code{incorrectSpeculation}\} $<$ \code{correctSpeculatoin}
+    \item All others are conflict free.
+\end{itemize}
+
+We make \code{dispatchData} and \code{doDispatch} conflict free with \code{setRegReady}, because \code{dispatchData} and \code{doDispatch} do not need to see the effect of \code{setRegReady} in the same cycle.
+An instruction can be issued many cycles after it is waken up.
+This cuts off the bypass path from \code{setRegReady} to \code{dispatchData} (i.e., selecting a ready entry).
+
+We make \code{canEnq} conflict free with \code{doDispatch}, because the reservation station does not need to have pipelined behavior, i.e., being able to remove and insert simultaneously when it is full.
+This cuts off bypass from \code{doDispatch} to \code{canEnq} which is used in the rename stage.
+
+We order \code{enq} after \code{setRegReady}, \code{dispatchData}, \code{doDispatch}, and \code{canEnq} because \code{enq} happens at the earliest stage, i.e., the rename stage.
+
+We order \code{setRobEnqTime} before \code{dispatchData} and \code{doDispatch} because scheduling an instruction to issues uses the ROB enqueue pointer as a heuristic.
+
+We order \code{incorrectSpeculation} conflict with \code{enq} and \code{doDispatch} to cut off any bypass paths.
+
+We order \code{correctSpeculation} after other methods because of the convention stated in Section~\ref{sec:specupdate}.
+
+\subsubsection{Implementation}
+The module uses a set of EHRs to store an entry, i.e., one EHR per field.
+The module also use a vector of EHRs to store the valid bits of each entry.
+Methods \code{setRegReady}, \code{correctSpeculation} and \code{incorrectSpeculation} access the EHRs directly using EHR ports according to the conflict matrix.
+
+Method \code{canEnq} (i.e., the guard of \code{enq}) does not check the valid bits directly.
+An internal rule searches through valid bits using EHR port 0 to find an empty entry, and then set a wire with the entry index (a \code{Maybe} type).
+Method \code{canEnq} checks if the wire contains a valid index.
+Method \code{enq} writes to entry indexed by the wire value, but it writes to the appropriate EHR port of data fields according to the conflict matrix.
+
+Methods \code{dispatchData} and \code{doDispatch} does not check the register-ready bits (\code{reg\_ready}) in the EHRs directly.
+The module uses a vector of wires to catch the values of the register-ready bits with EHR port 0.
+The methods use the values of the wires to determine which one is ready to issue.
+Wires are acceptable because both \code{dispatchData} and \code{doDispatch} are conflict-free with \code{setRegReady}.
+For fields other than register-ready bits, the methods access the EHRs directly using the appropriate ports.
+
+Method \code{setRobEnqTime} uses a wire to record its argument.
+And method \code{dispatchData} uses the wire value in the issue-scheduling policy.
+Wire is acceptable because this is a performance feature, unrelated to correctness.
+
+We also manually make \code{incorrectSpeculation} conflict with \code{enq} and \code{doDispatch}.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkReservationStation} in \code{//procs/lib/ReservationStationEhr.bsv},
+    \item module \code{mkReservationStationAlu} in \code{//procs/RV64G\_OOO/ReservationStationAlu.bsv},
+    \item module \code{mkReservationStationMem} in \code{//procs/RV64G\_OOO/ReservationStationMem.bsv}, and
+    \item module \code{mkReservationStationFpuMulDiv} in\\ \code{//procs/RV64G\_OOO/ReservationStationFpuMulDiv.bsv}.
+\end{itemize}
+
+\subsubsection{Future Implementation}
+We should move field \code{spec\_tag} into field \code{data} in type \code{ToReservationStation} as described in Section~\ref{sec:rs:ifc}.

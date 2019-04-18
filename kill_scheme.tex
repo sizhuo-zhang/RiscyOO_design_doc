@@ -39,9 +39,12 @@ The module also needs to provide interface methods to allow top-level rules to s
 All modules that keep speculative instructions except ROB provides the \code{SpeculationUpdate} interface in Figure~\ref{fig:specupdate-ifc}.
 ROB provides the \code{ROB\_SpeculationUpdate} interface in Figure~\ref{fig:specupdate-ifc}.
 
-In both interfaces, method \code{correctSpeculation} clears the speculation bit mask of each instruction in the module saccording to argument \code{mask}.
+In both interfaces, method \code{correctSpeculation} clears the speculation bit mask of each instruction in the module according to argument \code{mask}.
 This method is called when a branch resolves to be predicted correctly.
 Since multiple branches can be resolved (to be predicted correctly) in the same cycle, we use argument \code{mask} to encode the speculation tags of all these branches.
+
+\emph{As a convention, we always order \code{correctSpeculation} after all other methods in the conflict matrix of each module.}
+This can simplify global rule scheduling because the\\ \code{correctSpeculation} method of every module will be called together in one rule.
 
 In both interfaces, method \code{incorrectSpeculation} squashes wrong-path instructions.
 If argument \code{kill\_all} is true, then all instructions in the module are squashed.

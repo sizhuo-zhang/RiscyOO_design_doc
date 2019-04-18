@@ -97,6 +97,8 @@ The rename stage performs register renaming and enters the instruction int ROB a
 When the instruction finishes execution and leaves the execution pipeline, it notifies the ROB that it is executed.
 Finally the commit stage commits instructions from ROB in order.
 
+Below we introduce some basic information about the core, which is not tied to each specific module.
+
 \noindent\textbf{Superscalarity:}
 The processor core is also superscalar.
 The fetch pipeline, rename stage and commit stage can all handle multiple instructions in one cycle.
@@ -114,7 +116,7 @@ However, there can only be one memory execution pipeline
 \noindent\textbf{Scheduling Convention:}
 Since there are many modules in the core, assigning conflict matrices to different module interfaces to maximize the concurrency of rules can be difficult.
 To simplify the problem, we following the convention of \emph{reverse pipeline ordering} in assigning conflict matrices.
-That is, rules representing later stages in the processor pipeline (e.g., commit) are ordered before rules representing earlier stages (e.g., rename), and thus, interface methods called in later stages are ordered before methods called in earlier stages.
+\emph{That is, rules representing later stages in the processor pipeline (e.g., commit) are ordered before rules representing earlier stages (e.g., rename), and thus, interface methods called in later stages are ordered before methods called in earlier stages.}
 
 \noindent\textbf{System Instructions:}
 Some instructions can change the context of the processor and are difficult to be executed out of order or concurrently with other instructions.
@@ -127,6 +129,11 @@ These instructions are called \emph{system instructions}, and include the follow
     \item \inst{FENCE.I} which is used for self-modifying code.
 \end{itemize}
 System instructions are executed in a blocking way, i.e., the instruction will be the only instruction in the ROB.
+
+
+\noindent\textbf{Detecting Interrupt:}
+
+\noindent\textbf{Read-After-Write Hazards for CSRs:}
 
 \noindent\textbf{Organization:}
 In the rest of this section, we first introduce the general mechanism to control speculation in the back-end (Section~\ref{sec:specupdate}), and then describe each modules and top-level rules.
@@ -144,6 +151,8 @@ In the rest of this section, we first introduce the general mechanism to control
 \input{rf_sbcons}
 
 \input{rob}
+
+\input{reservation_station}
 
 \section{Uncore}
 
