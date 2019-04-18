@@ -4,7 +4,7 @@ Almost all instructions in the processor are speculative and may be at the wrong
 Since the front-end is in-order while the back-end is out-of-order, we use different schemes in the front-end and the back-end, and we explain each of the schemes next.
 
 \subsubsection{Front-End}
-The rename stage kills wrong-path instructions from the front-end (i.e., the fetch pipeline) based on the epoch in the \emph{epoch manager} (Section \mycomment{XXX}).
+The rename stage kills wrong-path instructions from the front-end (i.e., the fetch pipeline) based on the epoch in the \emph{epoch manager} (Section~\ref{sec:epoch}).
 The fetch pipeline contains a copy of the epoch, and every fetched instruction will carry the epoch value.
 At the rename stage, instructions with epochs not equal to the epoch value in the epoch manager are killed.
 Whenever the PC register in the fetch pipeline needs to be redirected (because of branch mispredictions, exceptions, interrupts, or mis-speculative loads), the epoch in the epoch manager will be incremented either at the redirect time or slightly earlier.
@@ -31,7 +31,7 @@ Every instruction will also be assigned with a speculation bit mask (type \code{
 Each bit in the bit mask corresponds to a speculation tag.
 If the bit is set, then the instruction should be killed in case the branch holding the speculation tag is mispredicted.
 If a branch turns out to be predicted correctly, then the corresponding bit should be cleared from all instructions in the back-end. 
-The \emph{speculation tag manager} (Section \mycomment{XXX}) assigns and recycles speculation tags, and also assigns speculation bit masks.
+The \emph{speculation tag manager} (Section~\ref{sec:spectag}) assigns and recycles speculation tags, and also assigns speculation bit masks.
 
 \noindent\textbf{Module interface to manipulate speculative instructions:}
 Every module in the back-end that keeps speculative instructions should also keep the speculation bit mask for each instruction.
@@ -68,7 +68,7 @@ endinterface
 
 \noindent\textbf{Centralized entry point for manipulating speculative instructions:}
 The commit stage or the branch-resolve rule does not call directly the \code{SpeculationUpdate} interface of every module to clear speculation bit masks or squashing instructions.
-Instead, they both call the interface of the \emph{global speculation updater} (Section \mycomment{XXX}), which is the centralized entry point for manipulating speculative instructions.
+Instead, they both call the interface of the \emph{global speculation updater} (Section~\ref{sec:globalspec}), which is the centralized entry point for manipulating speculative instructions.
 The global speculation updater merges requests to clear speculation bit masks and then call the \code{correctSpeculation} method of every module.
 It also arbitrate between requests to squash instructions and then call the \code{incorrectSpeculation} method of every module.
 To some degree, having a centralized the entry point simplifies the broadcast logic for manipulating speculative instructions.

@@ -1,0 +1,62 @@
+\subsection{Speculation Tag Manager}\label{sec:spectag}
+
+The speculation tag manager manages all the speculation tags (including both assigned tags and free tags).
+Speculation tags are checked out or assigned at rename stage, and freed when the branch resolves in the ALU execution pipeline.
+It should be noted that if a branch is mispredicted, then the speculation tags of itself and younger branches are all freed.
+Since the module tracks all the in-flight speculation tags, it also assigns speculation bit mask to each instruction at the rename stage.
+
+\subsubsection{Interface}
+
+Figure~\ref{fig:spectag-ifc} shows the interface of the speculation tag manager.
+Now we explain each interface method:
+\begin{itemize}
+    \item Method \code{currentSpecBits}: returns the speculation bit mask that should be assigned to the instruction at the rename stage.
+    
+    \item Method \code{nextSpecTag}: returns the speculation tag to be checked out for a new branch instruction at the rename stage.
+    The guard is false if all tags have been checked out.
+    
+    \item Method \code{claimSpecTag}: checks out a new speculation tag for a new branch instruction at the rename stage.
+    The guard is false if all tags have been checked out.
+    
+    \item Method \code{canClaim}: returns the guard of methods \code{nextSpecTag} and \code{claimSpecTag}.
+    
+    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+\end{itemize}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface SpecTagManager;
+  method SpecBits currentSpecBits;
+  method SpecTag  nextSpecTag;
+  method Action   claimSpecTag;
+  method Bool     canClaim;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkSpecTagManager(SpecTagManager);
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of speculation tag manager}\label{fig:spectag-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item \{\code{currentSpecBits}, \code{nextSpecTag}, \code{canClaim}\} $<$ \code{claimSpecTag} $<$ \code{correctSpeculation}
+    \item \{\code{currentSpecBits}, \code{nextSpecTag}, \code{canClaim}\} $<$ \code{incorrectSpeculation}
+    \item \code{claimSpecTag} C \code{incorrectSpeculation}
+\end{itemize}
+We make \code{claimSpecTag} conflict with \code{incorrectSpeculation}, because the \code{claimSpecTag} must be called by a wrong-path instruction if \code{incorrectSpeculation} is called in the same cycle.
+
+\subsubsection{Implementation}
+The module uses EHR \code{current\_spec\_bits\_ehr} to keep the current speculation bit mask.
+Each bit in the mask represents if the corresponding speculation tag is held of an in-flight branch in the ROB.
+The module uses a vector of registers \code{dependent\_checkpoints} to track the dependencies between speculation tags.
+\code{dependent\_checkpoints[t]} is the speculation bit mask that encodes all the speculation tags that is checked out after speculation tag \code{t} (including \code{t} also).
+That is, if the branch with speculation tag \code{t} is mispredicted, then all speculation tags encoded in \code{dependent\_checkpoints[t]} should be freed.
+
+All methods access the EHR or registers directly according to the conflict matrix.
+We manually create a conflict between \code{claimSpecTag} and \code{incorrectSpeculation}.
+
+\subsubsection{Source Code}
+See module \code{mkSpecTagManager} in \code{//procs/lib/SpecTagManager.bsv}.

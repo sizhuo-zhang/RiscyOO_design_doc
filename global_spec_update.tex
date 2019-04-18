@@ -1,0 +1,65 @@
+\subsection{Global Speculation Updater}\label{sec:globalspec}
+
+The global speculation updater is the centralized point for calling the \code{SpeculationUpdate} interface of every module.
+
+\subsubsection{Interface}
+Figure~\ref{fig:globalspec-ifc} shows the interface of the module.
+The module takes in two interface arguments.
+Argument \code{ifc} is the aggregated interface of the \code{SpeculationUpdate} interface of every module.
+That is, calling any method in \code{ifc} is effectively calls the corresponding method in the \code{SpeculationUpdate} interface of every module.
+Argument \code{rob} is the \code{ROB\_SpeculationUpdate} method of ROB (Sections~\ref{sec:specupdate}).
+The two arguments together contain all the interface methods to squash all the speculative instructions and clear all the speculation bit masks.
+Now we explain each interface method returned by the module:
+\begin{itemize}
+    \item Subinterface \code{correctSpec}: provides a vector of methods to clear bits in every speculation bit mask in the back-end.
+    This method is called when branch resolves to be predicted correctly.
+    Having a vector of methods allows multiple branches to be resolved in one cycle.
+    \item Method \code{incorrectSpec}: squashes speculative instructions by calling the\\ \code{incorrectSpeculation} method of every module in the back-end.
+\end{itemize}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface GlobalSpecUpdate#(numeric type correctSpecPortNum, numeric type conflictWrongSpecPortNum);
+  interface Vector#(correctSpecPortNum, Put#(SpecTag)) correctSpec;
+  method Action incorrectSpec(Bool kill_all, SpecTag spec_tag, InstTag inst_tag);
+endinterface
+module mkGlobalSpecUpdate#(
+  SpeculationUpdate ifc, ROB_SpeculationUpdate rob
+)(GlobalSpecUpdate#(correctSpecPortNum, conflictWrongSpecPortNum));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of global speculation updater}\label{fig:globalspec-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item \code{correcSpec[i]} CF \code{correctSpec[j]}
+    \item \code{correctSpec} C \code{incorrectSpec}
+    \item \code{incorrectSpec} C \code{incorrectSpec}
+\end{itemize}
+Note that method \code{incorrectSpec} is conflict with itself, so there can only be one rule calling it to squash instructions in each cycle.
+
+There is no very specific reason for making \code{correctSpec} conflict with \code{incorrectSpec}.
+Making conflicting may reduce the amount of data being broadcast, otherwise we need to broadcast \code{SpecBits} for both \code{correctSpec} and \code{incorrectSpec}.
+Making them conflict might also simplify overall scheduling.
+
+\subsubsection{Implementation}\label{sec:globalspec:impl}
+The \code{incorrectSpec} method simply calls the \code{incorrectSpeculation} method in module argument \code{ifc} and \code{rob} (in Figure~\ref{fig:globalspec-ifc}).
+The \code{correctSpec} methods use wires to record their input arguments, i.e., the speculation tag to be freed.
+Then, a canonicalize rule  merges all the speculation tags that are freed into a speculation bit mask and calls the \code{correctSpeculation} method in module argument \code{ifc} and \code{rob}.
+We manually create conflict between \code{correctSpec} and \code{incorrectSpec}.
+
+Currently, the \code{incorrectSpec} and \code{correctSpec} methods will broadcast to all modules in a single cycle.
+This may complicate routing.
+To reduce the pressure on routing, we can broadcast these methods to modules in multiple cycles (e.g., via a register pipeline).
+However, we still need to make sure that the \code{correctSpeculation} or \code{incorrectSpeculation} method of all modules are called atomically in one rule.
+Futhermore, when a \code{incorrectSpec} method call is being broadcast to all the modules, we should block any future calls to this module until the broadcast is done.
+This is because the instruction that initiate the future call may be killed by the broadcast.
+
+\subsubsection{Source Code}
+See module \code{mkGlobalSpecUpdate} in \code{//procs/lib/GlobalSpecUpdate.bsv}.
+
+\subsubsection{Future Improvement}
+We should pipeline the broadcast as described in Section~\ref{sec:globalspec:impl}.

@@ -1,4 +1,4 @@
-\subsection{Epoch Manager}
+\subsection{Epoch Manager}\label{sec:epoch}
 
 The epoch manager manages the epoch that is used to kill wrong-path instructions at the rename stage.
 Each time a redirection happens, the epoch is incremented by one, so the epoch value will change as follows (\code{NumEpochs} is the number of unique epoch values):
@@ -39,6 +39,9 @@ interface EpochManager;
   method Epoch getEpoch;
   method Action incrementEpoch;
 endinterface
+module mkEpochManager(EpochManager);
+  // module implementation
+endmodule
 \end{lstlisting}
 \caption{Interface of epoch manager}\label{fig:epoch-ifc}
 \end{figure}
