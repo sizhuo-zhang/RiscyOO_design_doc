@@ -1,0 +1,66 @@
+\subsection{Speculative FIFO}\label{sec:specfifo}
+
+Each entry in the speculative FIFO carries a speculation bit mask (\code{SpecBits}), and the entry will be dropped if speculation is wrong.
+This FIFO is often used as FIFOs between pipeline stages in the backend.
+
+\subsubsection{Interface}
+
+Figure~\ref{fig:specfifo-ifc} shows the interface of this module.
+The interface here has been adapted slightly from what is in the source code.
+Type \code{ToSpecFifo} is the content in a speculative FIFO, i.e., a payload field \code{data} and the speculation bit mask \code{spec\_bits}.
+The type of the payload is parameterized by type parameter \code{t}.
+Now we explain each interface method:
+\begin{itemize}
+    \item Methods \code{enq}, \code{deq} and \code{first}: are the common FIFO interface methods.
+    It should be noted that wrong-path entries killed by mis-speculations will not show up in the dequeue port because they are already dropped.
+    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+\end{itemize}
+If the module parameter \code{lazyEnq} is true, then method \code{deq} does not affect the guard of method \code{enq}, i.e., method \code{enq} cannot claim the dequeuing entry.
+
+\begin{figure}[t]
+\begin{lstlisting}[caption={}]
+typedef struct {
+  t data;
+  SpecBits spec_bits;
+} ToSpecFifo#(type t) deriving(Bits, Eq, FShow);
+interface SpecFifo#(numeric type size, type t);
+  method Action enq(ToSpecFifo#(t) x);
+  method Action deq;
+  method ToSpecFifo#(t) first;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkSpecFifo#(Bool lazyEnq)(SpecFifo#(size, t));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of speclative FIFO}\label{fig:specfifo-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item \code{deq} $<$ \code{enq} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} C \code{enq}
+    \item \code{deq} C \code{incorrectSpeculation}, or \code{deq} $<$ \code{incorrectSpeculation}
+\end{itemize}
+It should be noted that we have implemented with versions of the FIFO.
+The only difference is in the ordering between method \code{deq} and  method \code{incorrectSpeculation}.
+
+\subsubsection{Implementation}
+For each FIFO entry, we use EHRs to store the valid bit, payload, and speculation bit mask.
+Methods access EHRs using the appropriate ports according to the conflict matrix.
+Method \code{incorrectSpeculation} will reset the valid bit of wrong-path entries, and thus leaves holes inside the FIFO.
+There is an internal rule \code{canon\_deqP} which removes the head of the FIFO if the head is an invalid entry caused by mis-speculation.
+Method \code{deq} and rule \code{canon\_deqP} are mutually exclusive.
+
+If the module parameter \code{lazyEnq} (Figure~\ref{fig:specfifo-ifc}) is true, then the guard of method \code{enq} is computed using the wire which is set using port 0 of all EHRs.
+This cuts off the path from method \code{deq} to \code{enq}.
+
+\subsubsection{Future Improvement}
+Although the guard of method \code{enq} can be independent from method \code{deq}, we still need to order \code{deq} $<$ \code{enq} because of double writes on the valid bits, which cannot really happen if \code{lazyEnq} is true.
+This method ordering actually complicates the internal implementation of LSQ (see Section~\ref{sec:lsq})
+We should be able to design a speculative FIFO with \code{deq} CF \code{enq}.
+
+\subsubsection{Source Code}
+See module \code{mkSpecFifo} in \code{//procs/procs/lib/SpecFifo.bsv}.

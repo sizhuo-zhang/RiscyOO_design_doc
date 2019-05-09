@@ -1,0 +1,210 @@
+\subsection{LSQ}\label{sec:lsq}
+
+LSQ (load-store queue) keeps loads and stores.
+It executes loads out of order and speculatively and keep tracks of violations of memory orderings.
+
+Loads and stores are kept in separate queues, i.e., LQ and SQ.
+LQ contains loads and load-reserves.
+SQ contains stores, store-conditionals, atomic read-modify-writes, and \emph{fence instructions}.
+In future, we should move Reconcile fences to LQ.
+
+In order to observe the memory dependency between loads and stores, each load in LQ keeps track of the index of the immediately preceding SQ entry.
+In case a load has been issued from LQ, the load needs to track whether its value will come from the cache or by forwarding from an SQ entry or an SB entry.
+When a load tries to issue, it may not be able to proceed because of fences or partially overlapped older stores.
+In such cases, the load records the source that stalls it, and retries after the source of the stall has been resolved.
+In case of ROB flush, if a load, which is waiting for the memory response, is killed, then this load entry is marked as waiting for a wrong path response.
+Because of this bit, we can reallocate this entry to a new load, but not issue it until the bit is cleared.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+typedef struct {
+  InstTag            instTag;
+  LdQMemFunc         memFunc;
+  Bool               unsignedLd;
+  ByteEn             byteEn;
+  Bool               acq;
+  Bool               rel;
+  Maybe#(PhyDst)     dst;
+  Addr               paddr;
+  Bool               isMMIO;
+  ByteEn             shiftedBE;
+  Maybe#(Exception)  fault;
+  Bool               computed;
+  Bool               inIssueQ;
+  Bool               executing;
+  Bool               done;
+  Maybe#(LdKilledBy) killed;
+  Maybe#(StQTag)     olderSt;
+  Bool               olderStVerified;
+  Maybe#(StQTag)     readFrom;
+  Maybe#(LdQTag)     depLdQDeq;
+  Maybe#(StQTag)     depStQDeq;
+`ifndef TSO_MM
+  Maybe#(LdQTag)     depLdEx;
+  Maybe#(SBIndex)    depSBDeq;
+`endif
+  SpecBits           specBits;
+  Bool               atCommit;
+  Bool               waitWPResp;
+} LdQEntry deriving (Bits, Eq, FShow);
+\end{lstlisting}
+\caption{Fields in a LQ entry}\label{fig:lq-entry}
+\end{figure}
+
+Figure~\ref{fig:lq-entry} shows the fields of a LQ entry:
+\begin{itemize}
+    \item Field \code{instTag}: is the ROB index of the load.
+    \item Field \code{memFunc}: specifies the type of the load (i.e., load or load-reserve).
+    \item Field \code{unsignedLd}: indicates if the load is unsigned or not.
+    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful load data in an 8B double-word.
+    This bit mask is taken directly from the decode result, and is not shifted according to the address.
+    For example, if the load is a load-byte, then the least significant bit of the bit mask is set regardless of the load address.
+    \item Field \code{acq}: is true if the load (load-reserve) carries a Reconcile fence.
+    \item Field \code{rel}: is true if the load (load-reserve) carries a Commit fence.
+    \item Field \code{dst}: is the destination physical register of the load.
+    \item Field \code{paddr}: is the physical address of the load.
+    This field is meaningful only if field \code{computed} is true.
+    \item Field \code{isMMIO}: indicates if the load is accessing MMIO region.
+    This field is meaningful only if field \code{computed} is true.
+    \item Field \code{shiftedBE}: specifies the position of the useful load data in an 8B double-word which is loaded from an 8B aligned address.
+    This is, it is \code{byteEn} shifted according to the lower bits of the address.
+    \item Field \code{fault}: records the exception happened during address translation or MMIO access.
+    \item Field \code{computed}: is set true when the translated address is filled into the LQ entry.
+    \item Field \code{inIssueQ}: is set true when the load is identified as able to issue (to memory or get bypass), and is unset when the load is truly issued to execution.
+    \item Field \code{executing}: is set when the load is issued to execution.
+    \item Field \code{done}: is set when the load result returns.
+    \item Field \code{killed}: is set when the load is detected to violate memory ordering (e.g., store-to-load dependency or memory consistency).
+    The load is not dropped immediately, and will be handled in a way similar to exceptions.
+    The reason for the violation is also recorded for performance evaluation.
+    \item Field \code{olderSt}: is the SQ index of the immediately older store than this load.
+    This field is \code{Invalid} if there is no older stores in SQ.
+    \item Field \code{olderStVerified}: is set true to indicate that the load can be retired from LQ, i.e., older entries in SQ should not affect the load.
+    This is set by an internal rule of the module.
+    \item Field \code{readFrom}: records the source of the load result when the load starts execution.
+    This field is meaningful only if field \code{executing} is true.
+    \item Field \code{depLdQDeq}: is valid if the load is stalled by an older load-reserve which carries a Reconcile fence.
+    This field records the LQ index of the older load.
+    This will be reset when the older load is dequeued from LQ.
+    \item Field \code{depStQDeq}: is valid if the load is stalled by an older store or fence in SQ.
+    This field records the SQ index of the older store or fence.
+    This will be reset when the older store or fence is dequeued from SQ.
+    \item Field \code{depLdEx}: is valid if the load is stalled by an older load for the same address.
+    This field records the LQ index of the older load.
+    This will be reset when the older load starts execution.
+    \item Field \code{depSBDeq}: is valid if the load is stalled by an entry in store buffer (SB) because of partially overlapped address.
+    This field records the index in SB.
+    This will be reset when the SB entry is removed.
+    \item Field \code{specBits}: is the speculation bit mask.
+    \item Field \code{atCommit}: is true when the load has reached the commit slot in ROB.
+    \item Field \code{waitWPResp}: is true if this LQ entry is waiting for a wrong-path response, and the current load in this entry cannot start execution.
+    This bit will be reset when the wrong-path response returns.
+\end{itemize}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+typedef struct {
+  InstTag           instTag;
+  StQMemFunc        memFunc;
+  AmoFunc           amoFunc;
+  Bool              byteEn;
+  Bool              acq;
+  Bool              rel;
+  Maybe#(PhyDst)    dst;
+  Addr              paddr;
+  Bool              isMMIO;
+  ByteEn            shiftedBE;
+  Data              stData;
+  Maybe#(Exception) fault;
+  Bool              computed;
+  Bool              verified;
+  SpecBits          specBits;
+  Bool              atCommit;
+} StQEntry deriving(Bits, Eq, FShow);
+\end{lstlisting}
+\caption{Fields in a SQ entry}\label{fig:sq-entry}
+\end{figure}
+
+Figure~\ref{fig:sq-entry} shows the fields of a SQ entry:
+\begin{itemize}
+    \item Field \code{instTag}: is the ROB index of the instruction.
+    \item Field \code{memFunc}: specifies the type of the instruction (i.e., store, or store-conditional, or atomic read-modify-write, or fence).
+    \item Field \code{amoFunc}: specifies the type of the atomic read-modify-write operation if the instruction is an atomic read-modify-write.
+    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful store data in the 8B double-word in the source register.
+    This bit mask is taken directly from the decode result, and is not shifted according to the address.
+    For example, if the store is a store-byte, then the least significant bit of the bit mask is set regardless of the store address.
+    \item Field \code{acq}: is true if the instruction carries a Reconcile fence.
+    \item Field \code{rel}: is true if the instructoin carries a Commit fence.
+    \item Field \code{dst}: is the destination physical register of the load.
+    \item Field \code{paddr}: is the physical address of the load.
+    This field is meaningful only if field \code{computed} is true.
+    \item Field \code{isMMIO}: indicates if the load is accessing MMIO region.
+    This field is meaningful only if field \code{computed} is true.
+    \item Field \code{shiftedBE}: specifies the position of the useful store data in an 8B double-word which will be written to an 8B aligned address.
+    This is, it is \code{byteEn} shifted according to the lower bits of the address.
+    \item Field \code{stData}: If the instruction is an atomic read-modify-write, then this field is exactly the data in the source register.
+    Otherwise, this field is the value in the source register shifted according to the lower bits of the address, i.e., the 8B data that will be written to an 8B aligned address.
+    We make this distinction because atomic read-modify-writes may use the source-register data in arithmetic operations.
+    It should be noted that field \code{shiftedBE} of an atomic read-modify-write is still the shifted version, because we need to stall younger loads with overlapped address.
+    An unshifted data is fine for an atomic read-modify-write because it never forwards data to younger loads.
+    \item Field \code{fault}: records the exception happened during address translation or MMIO access.
+    \item Field \code{computed}: is set true when the translated address is filled into the SQ entry.
+    \item Field \code{verified}: is set true to indicate this instruction should not affect younger loads for memory orderings.
+    This is set by an internal rule.
+    \item Field \code{specBits}: is the speculation bit mask.
+    \item Field \code{atCommit}: is true when the load has reached the commit slot in ROB.
+\end{itemize}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface SplitLSQ;
+  method Maybe#(LdStQTag) enqLdTag;
+  method Maybe#(LdStQTag) enqStTag;
+  method Action enqLd(InstTag inst_tag, MemInst mem_inst,
+                      Maybe#(PhyDst) dst, SpecBits spec_bits);
+  method Action enqSt(InstTag inst_tag, MemInst mem_inst,
+                      Maybe#(PhyDst) dst, SpecBits spec_bits);
+  method ByteEn getOrigBE(LdStQTag t);
+  method ActionValue#(LSQHitInfo) getHit(LdStQTag t);
+  method Action updateData(StQTag t, Data d);
+  method ActionValue#(LSQUpdateAddrResult) updateAddr(
+    LdStQTag lsqTag, Maybe#(Exception) fault,
+    Addr paddr, Bool isMMIO, ByteEn shiftedBE
+  );
+  method ActionValue#(LSQIssueLdResult) issueLd(
+    LdQTag lsqTag, Addr paddr, ByteEn shiftedBE, SBSearchRes sbRes
+  );
+  method ActionValue#(LSQIssueLdInfo) getIssueLd;
+  method ActionValue#(LSQRespLdResult) respLd(LdQTag t, Data alignedData);
+  method LdQDeqEntry firstLd;
+  method Action deqLd;
+  method StQDeqEntry firstSt;
+  method Action deqSt;
+`ifdef TSO_MM
+  method Action cacheEvict(LineAddr a);
+`else
+  method Action wakeupLdStalledBySB(SBIndex sbIdx);
+`endif
+  method Bool stqEmpty;
+  interface Vector#(SupSize, Put#(LdStQTag)) setAtCommit;
+  interface SpeculationUpdate specUpdate;
+  method Bool stqFull_ehrPort0;
+  method Bool ldqFull_ehrPort0;
+  method Bool noWrongPathLoads;
+endinterface
+module mkSplitLSQ(SplitLSQ);
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of LSQ}\label{fig:lsq-ifc}
+\end{figure}
+
+Figure~\ref{fig:lsq-ifc} shows the interface of LSQ.
+Now we explain each interface method:
+\begin{itemize}
+    \item Method \code{enqLdTag}: returns the LQ index for the newly enqueued LQ entry.
+    \item Method \code{enqStTag}: returns the SQ index for the newly enqueued SQ entry.
+    \item Method \code{enqLd}: enqueues to LQ.
+    \item Method \code{enqSt}: enqueues to SQ.
+\end{itemize}

@@ -1,0 +1,49 @@
+\subsection{Speculative Poisoned FIFO}\label{sec:specpoisonfifo}
+
+Entries in the speculative poisoned FIFO carry speculation bit masks, but they are marked as \emph{poisoned} instead of being dropped when mis-speculation happens.
+This is commonly used skid FIFOs in parallel with in-order functional pipelines that we don't know details, e.g., the floating point pipeline.
+
+\subsubsection{Interface}
+Figure~\ref{fig:specpoisonfifo-ifc} shows the interface of the speculative poisoned FIFO (type \code{ToSpecFifo} has been explained in Figure~\ref{fig:specfifo-ifc}).
+Now we explain each interface method:
+\begin{itemize}
+    \item Methods \code{enq}, \code{deq} and \code{first}: are the common FIFO interface methods.
+    \item Method \code{first\_poisoned}: returns if the head of FIFO is poisoned or not.
+    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+\end{itemize}
+If the module parameter \code{lazyEnq} is true, then method \code{deq} does not affect the guard of method \code{enq}, i.e., method \code{enq} cannot claim the dequeuing entry.
+
+\begin{figure}[t]
+\begin{lstlisting}[caption={}]
+interface SpecPoisonFifo#(numeric type size, type t);
+  method Action enq(ToSpecFifo#(t) x);
+  method Action deq;
+  method ToSpecFifo#(t) first_data;
+  method Bool first_poisoned;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkSpecPoisonFifo#(Bool lazyEnq)(SpecPoisonFifo#(size, t));
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of speculative poisoned FIFO}\label{fig:specpoisonfifo-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item \code{deq} $<$ \code{enq} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} C \code{enq}
+    \item \code{deq} $<$ \code{incorrectSpeculation}
+\end{itemize}
+
+\subsubsection{Implementation}
+We use EHRs to store the fields for each FIFO entry.
+Methods access EHRs using the appropriate ports according to the conflict matrix.
+
+If the module parameter \code{lazyEnq} (Figure~\ref{fig:specfifo-ifc}) is true, then the guard of method \code{enq} is computed using the wire which is set using port 0 of all EHRs.
+This cuts off the path from method \code{deq} to \code{enq}.
+
+\subsubsection{Source Code}
+See module \code{mkSpecPoisonFifo} in \code{//procs/procs/lib/SpecPoisonFifo.bsv}.

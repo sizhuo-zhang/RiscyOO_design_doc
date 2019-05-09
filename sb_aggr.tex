@@ -10,9 +10,9 @@ The interface and module presented here are slightly different from what is the 
 Figure~\ref{fig:aggr-sb-ifc} shows the interface of this module.
 Now we explain each interface method: 
 \begin{itemize}
-    \item Subinterface \emph{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
-    \item Subinterface \emph{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
-    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+    \item Subinterface \code{setReady}: provides a vector of methods for instructions in execution pipelines to set the presence bits of their physical destination registers optimistically.
+    \item Subinterface \code{eagerLookup}: provides a vector of methods for instructions at the renaming stage to check the presence bits of their physical source registers.
+    \item Subinterface \code{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
 \end{itemize}
 
 \begin{figure}
@@ -42,14 +42,14 @@ endmodule
 \noindent\textbf{Conflict Matrix:}
 The conflict matrix of the interface methods is:
 \begin{center}
-    setReady[0] $<$ $\cdots$ $<$ setReady[setReadyNum-1] $<$ eagerLookup[0] $<$ setBusy[0] $<$ eagerLookup[1] $<$ setBusy[1] $<$ $\cdots$ $<$ eagerLookup[SupSize-1] $<$ setBusy[SupSize-1].
+    \code{setReady[0]} $<$ $\cdots$ $<$ \code{setReady[setReadyNum-1]} $<$ \code{eagerLookup[0]} $<$ \code{setBusy[0]} $<$ \code{eagerLookup[1]} $<$ \code{setBusy[1]} $<$ $\cdots$ $<$ \code{eagerLookup[SupSize-1]} $<$ \code{setBusy[SupSize-1]}.
 \end{center}
 We put all methods in a total order, though the conflict matrix does not need to transitive.
-We order setReady $<$ eagerLookup to match the rule ordering between instruction-execution rules (which call setReady) and the renaming rule (which calls eagerLookup).
+We order \code{setReady} $<$ \code{eagerLookup} to match the rule ordering between instruction-execution rules (which call \code{setReady}) and the renaming rule (which calls \code{eagerLookup}).
 The rule ordering is because the execution rules are in later stages of the pipeline than renaming.
-Thus, eagerLookup will observe the effects of all the calls to setReady in the same cycle, and this is why we call it ``eager''.
-Methods eagerLookup[$i$] and setBusy[$i$] are used by the $i^{th}$ renamed instruction at the renaming stage in each cycle.
-Since the $i^{th}$ instruction should see the renaming effects of all previous instructions, we order setBusy[$0\ldots i-1$] $<$ eagerLookup[$i$].
+Thus, \code{eagerLookup} will observe the effects of all the calls to \code{setReady} in the same cycle, and this is why we call it ``eager''.
+Methods \code{eagerLookup[i]} and \code{setBusy[i]} are used by the $i^{th}$ renamed instruction at the renaming stage in each cycle.
+Since the $i^{th}$ instruction should see the renaming effects of all previous instructions, we order \code{setBusy[0...i-1]} $<$ \code{eagerLookup[i]}.
 
 \subsubsection{Implementation}
 The implementation of the module does not contain any internal rules.
@@ -59,7 +59,7 @@ The interface methods access the EHRs using the appropriate port according to th
 \subsubsection{Source Code}
 See the followings:
 \begin{itemize}
-    \item module \texttt{mkScoreboardAggr} in \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
-    \item module \texttt{mkRenamingScoreboard} in file \texttt{//procs/lib/Scoreboard.bsv}.
+    \item module \code{mkScoreboardAggr} in \code{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
+    \item module \code{mkRenamingScoreboard} in \code{//procs/lib/Scoreboard.bsv}.
 \end{itemize}
   

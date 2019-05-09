@@ -13,10 +13,10 @@ Figure~\ref{fig:prf-sb-ifc} shows the interface of the fused module of the physi
 It should be noted that the interface shown here is different from what is in the source code, which splits this module as two separate modules.
 Now we explain each interface method:
 \begin{itemize}
-    \item Subinterface \emph{write}: provides a vector of methods for instructions that just finish execution to write the data into the physcial register file and set the presence bit.
-    \item Subinterface \emph{read}: provides a vector of methods for instructions at register-read stage to read both the data and presence bit of the source register.
+    \item Subinterface \code{write}: provides a vector of methods for instructions that just finish execution to write the data into the physcial register file and set the presence bit.
+    \item Subinterface \code{read}: provides a vector of methods for instructions at register-read stage to read both the data and presence bit of the source register.
     In case the presence bit is unset, the method returns \texttt{Invalid}.
-    \item Subinterface \emph{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
+    \item Subinterface \code{setBusy}: provides a vector of methods for instructions at the renaming stage to unset the presence bits of their physical destination registers.
     this method will be called together with the one in the aggressive scoreboard.
 \end{itemize}
 
@@ -50,45 +50,45 @@ endmodule
 \noindent\textbf{Conflict Matrix:}
 The conflict matrix of the interface methods is:
 \begin{itemize}
-    \item read CF \{write, setBusy\}
-    \item write[0] $<$ write[1] $<$ $\cdots$ $<$ write[wrNum-1] $<$ setBusy[0] $<$ setBusy[1] $<$ $\cdots$ $<$ setBusy[wrNum-1]
+    \item \code{read} CF \{\code{write}, \code{setBusy}\}
+    \item \code{write[0]} $<$ \code{write[1]} $<$ $\cdots$ $<$ \code{write[wrNum-1]} $<$ \code{setBusy[0]} $<$ \code{setBusy[1]} $<$ $\cdots$ $<$ \code{setBusy[wrNum-1]}
 \end{itemize}
-We set all the read methods conflict free with all the write methods, because reads do not need to reflect the effects of writes immediately.
-In case an old instruction is writing a register which is being read by a younger instruction as a source operand, it is ok for the read method to return \texttt{Invalid} even if the write method has been called.
+We set all the \code{read} methods conflict free with all the \code{write} methods, because reads do not need to reflect the effects of writes immediately.
+In case an old instruction is writing a register which is being read by a younger instruction as a source operand, it is ok for the read method to return \code{Invalid} even if the write method has been called.
 This simply delays the execution of the younger instruction.
-In our implementation, the read method will return \texttt{Invalid} if a write for the same physical register is being performed in the same cycle.
+In our implementation, the \code{read} method will return \code{Invalid} if a \code{write} for the same physical register is being performed in the same cycle.
 This can cut off the combinational path.
 
-Forcing read methods to be ordered before write methods can cause rule-scheduling problems, because rules that read the register file are in earlier pipeline stages than rules that write register file.
+Forcing \code{read} methods to be ordered before \code{write} methods can cause rule-scheduling problems, because rules that read the register file are in earlier pipeline stages than rules that write register file.
 That is, the method ordering will not agree with the (desired) top-level rule ordering.
 
-We also set all the read methods conflict free with all the setBusy methods.
+We also set all the \code{read} methods conflict free with all the \code{setBusy} methods.
 This is because the renaming algorithm guarantees that a physical register that is being used as a source operand of a (currently correct-path) instruction cannot be a free register for renaming destination architectural registers.
-However, \emph{it is still desirable in the furture implementation to set all the read methods $<$ all the setBusy methods}, because reads happen in later pipeline stages than setBusy does.
+However, \emph{it is still desirable in the furture implementation to set all the \code{read} methods $<$ all the \code{setBusy} methods}, because \code{reads} happen in later pipeline stages than \code{setBusy} does.
 
-We order all the write methods before all the setBusy methods, because write methods are called in later stages in the pipeline than setBusy methods.
+We order all the \code{write} methods before all the \code{setBusy} methods, because \code{write} methods are called in later stages in the pipeline than \code{setBusy} methods.
 
 \subsubsection{Implementation}
 The implementation uses a vector of EHRs to store the register data, and another vector of EHRs to store the presence bits.
-The write methods and set busy methods directly access the EHRs using appropriate ports according to the conflict matrix of the interface.
+The \code{write} methods and \code{setBusy} methods directly access the EHRs using appropriate ports according to the conflict matrix of the interface.
 
-The read methods do not directly access the EHRs.
-We use a vector of wires to retrieve value of port 0 of each EHR, and the read methods read from these wires.
+The \code{read} methods do not directly access the EHRs.
+We use a vector of wires to retrieve value of port 0 of each EHR, and the \code{read} methods read from these wires.
 This prevents any combinational path from write to read.
-This is a valid implementation because the read methods are conflict free with the write and setBusy methods, and the read methods can safely ignore the effects caused by the write or setBusy methods.
+This is a valid implementation because the \code{read} methods are conflict free with the \code{write} and \code{setBusy} methods, and the read methods can safely ignore the effects caused by the write or setBusy methods.
 
 \subsubsection{Source Code}
 See the followings:
 \begin{itemize}
-    \item module \texttt{mkRFileSynth} in file \texttt{//procs/RV64G\_OOO/RFileSynth.bsv},
-    \item module \texttt{mkRFile} in file \texttt{//procs/lib/PhysRFile.bsv},
-    \item module \texttt{mkScoreboardCons} in file \texttt{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
-    \item module \texttt{mkRenamingScoreboard} in file \texttt{//procs/lib/Scoreboard.bsv}.
+    \item module \code{mkRFileSynth} in \code{//procs/RV64G\_OOO/RFileSynth.bsv},
+    \item module \code{mkRFile} in \code{//procs/lib/PhysRFile.bsv},
+    \item module \code{mkScoreboardCons} in \code{//procs/RV64G\_OOO/ScoreboardSynth.bsv}, and
+    \item module \code{mkRenamingScoreboard} in \code{//procs/lib/Scoreboard.bsv}.
 \end{itemize}
 
 \subsubsection{Future Improvement}
 There are two improvements to make in a future implementation:
 \begin{enumerate}
     \item Merge the physical register file and the conservative scoreboard into one module to ensure that their methods are called together.
-    \item Order the read methods before the setBusy methods, so we don't need to rely on the high-level invariant of the renaming algorithm to ensure correctness.
+    \item Order the \code{read} methods before the \code{setBusy} methods, so we don't need to rely on the high-level invariant of the renaming algorithm to ensure correctness.
 \end{enumerate}
