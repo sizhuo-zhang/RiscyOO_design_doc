@@ -1,0 +1,72 @@
+\subsection{Renaming Table}\label{sec:rt}
+
+The renaming table manages the mapping from architectural registers to physical registers.
+The rename stage queries it to get the physical registers for the source registers of instructions and rename the destination registers of the instructions.
+The commit stage calls it to recycle unused physical registers.
+On mis-speculation, the renaming table also needs to be recovered.
+
+\subsubsection{Interface}
+
+Figure~\ref{fig:rt-ifc} shows the interface of the renaming table.
+Now we explain each interface:
+\begin{itemize}
+    \item Subinterface \code{rename}: provides a vector of methods to be called by instructions at the rename stage.
+    \begin{itemize}
+        \item Method \code{getRename}: returns the physical registers of the give source architectural registers according to the current mapping.
+        \item Method \code{claimRename}: claims a free physical register to rename the give destination architectural register and updates the mapping.
+        \item Method \code{canRename}: returns the guard of \code{claimRename}.
+    \end{itemize}
+    \item Subinterface \code{commit}: provides a vector of methods to be called by instructions at the commit stage.
+    \begin{itemize}
+        \item Method \code{commit}: recycles the physical register that is overshadowed by the renaming made by the committing instruction.
+        \item Method \code{canCommit}: returns the guard of \code{commit}.
+    \end{itemize}
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
+\end{itemize}
+\emph{We assume every instruction will call method \code{claimRename} at the the rename stage.}
+Even if the instruction does not have a destination register, it will claim a physical register.
+This simplifies the implementation of superscalar rename and commit.
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface RTRename;
+  method PhyRegs getRename(ArchRegs r);
+  method Action claimRename(ArchRegs r, SpecBits sb);
+  method Bool canRename;
+endinterface
+interface RTCommit;
+  method Action commit;
+  method Bool canCommit;
+endinterface
+interface RegRenamingTable;
+  interface Vector#(SupSize, RTRename) rename;
+  interface Vector#(SupSize, RTCommit) commit;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkRegRenamingTable(RegRenamingTable);
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of the renaming table}\label{fig:rt-ifc}
+\end{figure}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the interface methods is:
+\begin{itemize}
+    \item \code{commit[0]} $<$ \code{commit[1]} $<$ $\cdots$ $<$ \code{commit[SupSz-1]} $<$ \code{rename[0].getRename} $<$ \\ \code{rename[0].claimRename} $<$ \code{rename[1].getRename} $<$ \code{rename[1].claimRename} $<$ $\cdots$ $<$ \code{rename[SupSize-1].getRename} $<$ \code{rename[SupSize-1].claimRename}
+    \item \code{incorrectSpeculation} $<$ \code{correctSpeculation}
+    \item \code{commit} $<$ \code{incorrectSpeculation}
+    \item \code{incorrectSpeculation} C \code{rename.claimRename}
+\end{itemize}
+We order \code{rename[0].claimRename} before \code{rename[1].getRename}, because the second instruction renamed at the rename stage should see the effects made by the first instruction renamed at the rename stage in the same cycle.
+
+\subsubsection{Implementation}
+We keep the renaming mapping made by committed instructions as a table, and keep all the renamings made by in-flight instructions in ROB as a FIFO of deltas.
+We did not use EHRs in this implementation.
+The bypass is limited only between superscalar renamings.
+We choose to use wires to capture all the method arguments, process all the actions in a canonicalization rule, explicitly bypass values from \code{claimRename} methods to \code{getRename} methods, and artificially creates method orderings.
+It should be noted that \code{getRename} methods can ignore the effects of \code{commit} methods which do not change the renaming mapping.
+This is a major reason not to use EHRs.
+
+\subsubsection{Source Code}
+See module \code{mkRegRenamingTable} in \code{//procs/lib/RenamingTable.bsv}.
