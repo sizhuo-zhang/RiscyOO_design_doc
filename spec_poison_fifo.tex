@@ -9,7 +9,7 @@ Now we explain each interface method:
 \begin{itemize}
     \item Methods \code{enq}, \code{deq} and \code{first}: are the common FIFO interface methods.
     \item Method \code{first\_poisoned}: returns if the head of FIFO is poisoned or not.
-    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
 \end{itemize}
 If the module parameter \code{lazyEnq} is true, then method \code{deq} does not affect the guard of method \code{enq}, i.e., method \code{enq} cannot claim the dequeuing entry.
 

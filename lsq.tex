@@ -15,6 +15,14 @@ In such cases, the load records the source that stalls it, and retries after the
 In case of ROB flush, if a load, which is waiting for the memory response, is killed, then this load entry is marked as waiting for a wrong path response.
 Because of this bit, we can reallocate this entry to a new load, but not issue it until the bit is cleared.
 
+Atomic instructions (load-reserve, store-conditional and read-modify-write), MMIO accesses, and fence instructions are handled in a conservative way.
+When such an instruction reaches the commit slot of the ROB, it is dequeued from LSQ and then executed.
+After the execution finishes, the instruction can be committed from ROB.
+
+We try to dequeue LQ as soon as possible to recycle this critical resource.
+Dequeuing a load requires all older SQ entries cannot kill the load.
+To check this, we sequentially \emph{verify} each SQ entry (from old to young) to make sure the SQ entry cannot squash a younger load.
+
 \subsubsection{Interface}
 
 \begin{figure}
@@ -58,11 +66,11 @@ Figure~\ref{fig:lq-entry} shows the fields of a LQ entry:
     \item Field \code{instTag}: is the ROB index of the load.
     \item Field \code{memFunc}: specifies the type of the load (i.e., load or load-reserve).
     \item Field \code{unsignedLd}: indicates if the load is unsigned or not.
-    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful load data in an 8B double-word.
+    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful load-data bytes in an 8B double-word.
     This bit mask is taken directly from the decode result, and is not shifted according to the address.
     For example, if the load is a load-byte, then the least significant bit of the bit mask is set regardless of the load address.
-    \item Field \code{acq}: is true if the load (load-reserve) carries a Reconcile fence.
-    \item Field \code{rel}: is true if the load (load-reserve) carries a Commit fence.
+    \item Field \code{acq}: is true if the entry is a load-reserve and carries a Reconcile fence.
+    \item Field \code{rel}: is true if the entry is a load-reserve and carries a Commit fence.
     \item Field \code{dst}: is the destination physical register of the load.
     \item Field \code{paddr}: is the physical address of the load.
     This field is meaningful only if field \code{computed} is true.
@@ -131,11 +139,11 @@ Figure~\ref{fig:sq-entry} shows the fields of a SQ entry:
     \item Field \code{instTag}: is the ROB index of the instruction.
     \item Field \code{memFunc}: specifies the type of the instruction (i.e., store, or store-conditional, or atomic read-modify-write, or fence).
     \item Field \code{amoFunc}: specifies the type of the atomic read-modify-write operation if the instruction is an atomic read-modify-write.
-    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful store data in the 8B double-word in the source register.
+    \item Field \code{byteEn}: is a bit mask that specifies the position of the useful store-data bytes in the 8B double-word in the source register.
     This bit mask is taken directly from the decode result, and is not shifted according to the address.
     For example, if the store is a store-byte, then the least significant bit of the bit mask is set regardless of the store address.
-    \item Field \code{acq}: is true if the instruction carries a Reconcile fence.
-    \item Field \code{rel}: is true if the instructoin carries a Commit fence.
+    \item Field \code{acq}: is true if the instruction carries a Reconcile fence (the instruction cannot be a normal store in this case).
+    \item Field \code{rel}: is true if the instructoin carries a Commit fence (the instruction cannot be a normal store in this case).
     \item Field \code{dst}: is the destination physical register of the load.
     \item Field \code{paddr}: is the physical address of the load.
     This field is meaningful only if field \code{computed} is true.
@@ -207,4 +215,61 @@ Now we explain each interface method:
     \item Method \code{enqStTag}: returns the SQ index for the newly enqueued SQ entry.
     \item Method \code{enqLd}: enqueues to LQ.
     \item Method \code{enqSt}: enqueues to SQ.
+    \item Method \code{getOrigBE}: returns field \code{byteEn} for an entry.
+    \item Method \code{getHit}: is called when a load is known to return value very soon.
+    This method returns whether the load response  is at wrong path (field \code{waitWPResp}), and the destination register of the load (field \code{dst}).
+    The result of this method is used to wake up dependent instructions optimistically before the load truly returns.
+    \item Method \code{updateData}: is called when the store data is computed.
+    It updates the \code{stData} field of a SQ entry.
+    \item Method \code{updateAddr}: is called when the address of a LQ/SQ entry is translated.
+    It sets fields \code{computed}, \code{fault} (in case of exception during translation), \code{paddr}, \code{isMMIO}, and \code{shiftedBE} of the entry.
+    It also kills eagerly executed younger loads which violates memory ordering.
+    \item Method \code{issueLd}: tries to issues the load at the LQ index given by the argument to execution.
+    Argument \code{sbRes} gives the search result in the store buffer (SB).
+    The method searches both older LQ and SQ entries for stall or bypass, and merge the search result with \code{sbRes} to determine if the load can bypass or should be stall.
+    In case of stall, the stall reason will be recorded in one of the fields \code{depLdQDeq}, \code{depStQDeq}, \code{deqLdEx}, and \code{deqSBDeq}.
+    The load cannot be rescheduled to issue until the stall reason is cleared.
+    In case the load is not stalled, the method sets the field \code{executing}, records the source of load value in field \code{readFrom}, wakes up younger load stalled by this one by clearing the \code{depLdEx} fields, and returns either the bypass result or the information that the load should access memory.
+    \item Method \code{getIssueLd}: returns a read-to-issue load.
+    \item Method \code{respLd}: is called when a load value returns.
+    If field \code{waitWPResp} is true, then the response is at the wrong path and we unset \code{waitWPResp}.
+    Otherwise, we set field \code{done} and return the proper destination register value according to fields like \code{byteEn}.
+    \item Method \code{firstLd}: returns the head of LQ.
+    \item Method \code{deqLd}: dequeues LQ, and wakes up younger loads stalled by this entry by clearing the \code{depLdQDeq}.
+    The dequeue guard is true if one of the following is true for the oldest entry of LQ:
+    \begin{enumerate}
+        \item The entry has an exception, i.e., field \code{fault} is valid.
+        \item The entry is a non-MMIO normal load, field \code{done} is set, and either there is no older SQ entry or older SQ entries no longer affect this load (i.e., field \code{olderStVerified} has been set).
+        \item The entry is load-reserve or MMIO load, both fields \code{computed} and \code{atCommit} are set, and there is no older SQ entry.
+        (The requirement of no older SQ entry simplifies the handling of this LQ entry after dequeue.)
+    \end{enumerate} 
+    The parent module which dequeues the LQ entry should execute the instruction if the instruction is a load-reserve or MMIO load, and also enforce fence ordering (if applicable) in case fields \code{acq} or \code{rel} are set.
+    It should be noted that a load that violates memory ordering cannot be dequeued from LQ until it is set as \code{done}.
+    This is because the load may have waken up dependent instructions which would otherwise block the execution pipeline and stall the execution of instructions older than the load.
+    In this case, the load cannot be committed and flush the pipeline, i.e., a deadlock happens.
+    \item Method \code{firstLd}: returns the head of SQ.
+    \item Method \code{deqSt}: dequeues SQ, wakes up younger loads stalled by this entry by clearing the \code{depStQDeq} fields, updates the \code{readFrom} field of younger loads which bypass from this store, updates the \code{olderSt} fields of LQ entries.
+    We may also update the internal bookkeeping for which SQ entries can no longer affect younger loads.
+    The dequeue guard is true if one of the following is true for the oldest entry of LQ:
+    \begin{enumerate}
+        \item The entry has an exception, i.e., field \code{fault} is valid.
+        \item Field \code{atCommit} is set, and either field \code{computed} is set or the entry is a fence instruction (which does not need to compute address).
+    \end{enumerate}
+    The parent module which dequeues the SQ entry should execute the instruction if the instruction is an atomic or MMIO access, and also enforce fence ordering (if applicable) in case fields \code{acq} or \code{rel} are set.
+    \item Method \code{cacheEvict}: is only called in TSO processor when a cache line in L1 is evicted due to replacement or parent downgrade.
+    This method set the \code{killed} field of eager loads that violate TSO memory ordering.
+    \item Method \code{wakeupLdStalledBySB}: is called when a SB entry is removed to allow loads stalled by this SB entry to retry.
+    This will clear field \code{depSBDeq} of these loads.
+    \item Method \code{stqEmpty}: returns true if SQ is empty.
+    \item Subinterface \code{setAtCommit}: is called when the instruction reaches the commit slot in ROB.
+    This method will set field \code{atCommit}.
+    We provide a vector of methods because we may commit multiple stores in a cycle.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
+    \item Method \code{stqFull\_ehrPort0}: returns whether SQ is full or not. This is used for performance evaluation.
+    \item Method \code{ldqFull\_ehrPort0}: returns whether LQ is full or not. This is used for performance evaluation.
+    \item Method \code{noWrongPathLoads}: returns true if all the \code{waitWPResp} fields are false in LQ, i.e., there is no in-flight wrong-path load.
 \end{itemize}
+
+\subsubsection{Future Improvement}
+
+\code{issueLd} should not be called when the load is in issueQ.

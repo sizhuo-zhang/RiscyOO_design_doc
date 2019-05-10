@@ -33,7 +33,7 @@ Now we explain each interface method:
     \item Subinterface \code{setRegReady}: provides a vector of methods to wake up instructions, i.e., a physical register becomes ready.
     \item Method \code{approximateCount}: returns the approximate number of occupied entries in the module.
     The result is used by the rename stage as a heuristic to choose which reservation station to enter an instruction if there are multiple identical execution pipelines (e.g., there can be two ALU pipelines).
-    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
 \end{itemize}
 
 \begin{figure}[t]

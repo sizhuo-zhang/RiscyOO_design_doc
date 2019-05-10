@@ -13,7 +13,7 @@ Now we explain each interface method:
 \begin{itemize}
     \item Methods \code{enq}, \code{deq} and \code{first}: are the common FIFO interface methods.
     It should be noted that wrong-path entries killed by mis-speculations will not show up in the dequeue port because they are already dropped.
-    \item Subinterface \code{specUpdate}: See Section~\ref{sec:specupdate}.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
 \end{itemize}
 If the module parameter \code{lazyEnq} is true, then method \code{deq} does not affect the guard of method \code{enq}, i.e., method \code{enq} cannot claim the dequeuing entry.
 
