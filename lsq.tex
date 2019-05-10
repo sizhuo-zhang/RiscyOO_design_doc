@@ -270,6 +270,85 @@ Now we explain each interface method:
     \item Method \code{noWrongPathLoads}: returns true if all the \code{waitWPResp} fields are false in LQ, i.e., there is no in-flight wrong-path load.
 \end{itemize}
 
+One subtlety is that method \code{issueLd} can be called for a load which is not retrieved from method \code{getIssueLd}.
+This case happen only in the cycle when we just translated the address of the load and is calling method \code{updateAddr} for this load.
+In this case, the conflict matrix of the internal rules and methods ensures that the load will not be identified as ready to issue and returned by \code{getIssueLd} if the load issues successfully in method \code{issueLd}, i.e., the load will not be issued twice.
+We will explain more when we discuss the implementation.
+However, we should fix this in future implementations.
+
+\noindent\textbf{Conflict Matrix:}
+For convenience, we put all methods into almost a total order:
+\begin{itemize}
+    \item \{\code{stqEmpty}, \code{stqFull\_ehrPort0}, \code{ldqFull\_ehrPort0}, \code{noWrongPathLoads}, \code{getOrigBE}, \code{getHit}\} $<$ \code{deqLd} $<$ \code{cacheEvict} $<$ \code{updateAddr} $<$ \{\code{getIssueLd}, \code{issueLd}\} $<$ \\ \{\code{wakeupLdStalledBySB}, \code{deqSt}\} $<$ \code{setAtCommit} $<$ \code{respLd} $<$ \code{updateData} $<$ \{\code{enqLdTag}, \code{enqStTag}\} $<$ \{\code{enqLd}, \code{enqSt}\} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} C all others
+    \item All others are CF
+\end{itemize}
+Although we assign EHR ports to methods according to the total order, the implementation may end up having more methods being conflict free, because they don't access the same state.
+
+Many orderings are determined based on the reverse pipeline convention, and some are chosen to reduce combinational path, i.e., there is no associative search depending on the result of another associative search.
+For example, we order \code{cacheEvict} before \code{updateAddr} to avoid the bypass path on field \code{paddr}.
+For another example, we order \code{updateAddr} before \code{issueLd} because \code{updateAddr} will kill eagerly executed loads.
+Although this creates a bypass path on field \code{paddr}, this avoids a bigger bypass path on field \code{executed} which an associative search to compute.
+
+\subsubsection{Implementation}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.7\columnwidth]{fig/lsq_crop.pdf}
+    \caption{Internal implementation of LSQ}\label{fig:lsq-impl}
+\end{figure}
+
+Figure~\ref{fig:lsq-impl} shows the internal implementation of LSQ.
+We use EHRs to store each field of a LQ or SQ entry.
+As mentioned earlier, we sequentially verify each SQ entry to ensure that it no longer affect younger loads.
+EHR \code{st\_verifyP} points to the SQ entry to be verified next.
+Speculative FIFO \code{issueQ} holds loads in LQ that are ready to be issued to execution (i.e., get bypass or access memory).
+Method \code{getIssueLd} dequeues this FIFO.
+There are three internal rules:
+\begin{itemize}
+    \item Rule \code{verifySt}: tries to verify that the SQ entry pointed by \code{st\_verifyP} cannot affect younger loads.
+    If this is the case, then the rule advances pointer \code{st\_verifyP}, sets field \code{verified} for the SQ entry, and sets field \code{olderStVerified} for applicable LQ entries.
+    \item Rule \code{findIssue}: searches LQ for the oldest unissued non-MMIO normal load that is ready to issue.
+    The LQ index of the load is recorded in a \emph{wire}.
+    \item Rule \code{enqIssue}: reads the value in the wire set by rule \code{findIssue}, and enqueues it into speculative FIFO \code{issueQ}.
+\end{itemize}
+As we can see, rules \code{findIssue} and \code{enqIssue} should actually be a single rule to ensure atomicity.
+However, because \code{issueQ} has the ordering constraint of dequeue before enqueue, the single rule would be ordered after many other rules, and thus, more bypass paths could be introduced.
+Since \code{findIssue} performs an associative search, we do not want to introduce bypass paths on it.
+Therefore, we split the rule into two, and connect them using a wire.
+To make this scheme work, any rule that could affect the LQ entry found by \code{findIssue} must be made conflict with \code{enqIssue}.
+Fortunately, only \code{incorrectSpeculation} needs to be conflict with \code{enqIssue}.
+It should be noted that since \code{findIssue} does not change any LQ/SQ state, it is fine that \code{enqIssue} fails to fire for whatever reason when \code{findIssue} fires.
+However, it is highly desirable to make \code{issueQ} a conflict-free speculative FIFO and put \code{findIssue} and \code{enqIssue} into one rule.
+
+The conflict matrix including the internal rules is (the internal rules are highlighted in red):
+\begin{itemize}
+    \item \{\code{stqEmpty}, \code{stqFull\_ehrPort0}, \code{ldqFull\_ehrPort0}, \code{noWrongPathLoads}, \code{getOrigBE}, \code{getHit}, \textcolor{red}{\code{findIssue}}\} $<$ \code{deqLd} $<$ \textcolor{red}{\code{verifySt}} $<$ \code{cacheEvict} $<$ \code{updateAddr} $<$ \{\code{getIssueLd}, \code{issueLd}\} $<$ \textcolor{red}{\code{enqIssueQ}} $<$ \{\code{wakeupLdStalledBySB}, \code{deqSt}\} $<$ \code{setAtCommit} $<$ \code{respLd} $<$ \code{updateData} $<$ \{\code{enqLdTag}, \code{enqStTag}\} $<$ \{\code{enqLd}, \code{enqSt}\} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} C all others
+    \item All others are CF
+\end{itemize}
+Regarding the problems of \code{issueLd} mentioned before, we have ordered \code{findIssue} before \code{issueLd} and \code{updateAddr}.
+That is, the load that calls \code{updateAddr} and \code{issueLd} in the same cycle will not be identified by \code{findIssue}, i.e., no duplicate load issue.
+
+Rules and methods will use the appropriate EHR ports according the conflict matrix.
+The only exception is when computing the guard of the \code{enqLd} and \code{enqSt} methods.
+The guard is computed using EHR port 0 to avoid bypass from the dequeue methods, and then the computed guard signal is set to a wire checked by the enqueue methods.
+
 \subsubsection{Future Improvement}
 
-\code{issueLd} should not be called when the load is in issueQ.
+\begin{enumerate}
+    \item Solve the problem of calling \code{updateAddr} and \code{issueLd} in the same cycle.
+    Instead of arbitrating between a newly translated load and a load given by \code{getIssueLd} outside LSQ, we can move this arbitration into LSQ.
+    Thus, we always call \code{getIssueLd} outside LSQ to retrieve the load that is ready to issue.
+    Then we can hide the problem inside LSQ completely.
+    
+    \item Merge rules \code{findIssue} and \code{enqIssueQ} into one rule by making \code{issueQ} a conflict-free speculative FIFO.
+    
+    \item Reconcile fences in case of using a weak memory model is not handled in the optimal way.
+    We should put Reconcile fences in LQ and dequeue them earlier than ROB commit time.
+\end{enumerate}
+
+\subsubsection{Source Code}
+See module \code{mkSplitLSQ} in \code{//procs/lib/SplitLSQ.bsv}.
