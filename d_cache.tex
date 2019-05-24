@@ -1,0 +1,31 @@
+\subsection{L1 D Cache}
+
+The L1 D cache takes requests from LSQ and store buffer, and will exchange coherence traffic with L2 cache.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface L1ProcReq#(type idT);
+  method Action req(ProcRq#(idT) r);
+endinterface
+interface L1ProcResp#(type idT);
+  method Action respLd(idT id, Data resp);
+  method Action respLrScAmo(idT id, Data resp);
+  method ActionValue#(Tuple2#(LineByteEn, Line)) respSt(idT id);
+  method Action evict(LineAddr a);
+endinterface
+interface DCoCache;
+  interface L1ProcReq#(DProcReqId) procReq;
+  method Action resetLinkAddr;
+  interface Perf#(L1DPerfType) perf;
+  interface ChildCacheToParent#(L1Way, void) to_parent;
+  interface Get#(L1DCRqStuck) cRqStuck;
+  interface Get#(L1DPRqStuck) pRqStuck;
+endinterface
+module mkDCoCache#(L1ProcResp#(DProcReqId) procResp)(DCoCache);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of L1 D cache}
+\end{figure}

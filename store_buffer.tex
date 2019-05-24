@@ -1,0 +1,75 @@
+\subsection{Store Buffer (SB)}\label{sec:sb}
+
+The store buffer (SB) holds committed stores retired from the LSQ.
+It can  merge stores for the same cache line and issue multiple requests for different cache lines to the L1 cache.
+After a SB entry is issued to the memory system, the entry still stays in SB to merge future stores for the same cache line.
+When the L1 cache has retrieved the exclusive permission for the cache line, and L1 cache is updated.
+SB is only used in the WMM implementation.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface StoreBuffer;
+  method Bool isEmpty;
+  method Maybe#(SBIndex) getEnqIndex(Addr paddr);
+  method Action enq(SBIndex idx, Addr paddr, ByteEn be, Data data);
+  method ActionValue#(SBEntry) deq(SBIndex idx);
+  method ActionValue#(Tuple2#(SBIndex, SBEntry)) issue;
+  method SBSearchRes search(Addr paddr, ByteEn be);
+  method Bool noMatchLdQ(Addr paddr, ByteEn be); 
+  method Bool noMatchStQ(Addr paddr, ByteEn be); 
+endinterface
+module mkStoreBufferEhr(StoreBuffer);
+  // module implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of SB}\label{fig:sb-ifc}
+\end{figure}
+
+Figure~\ref{fig:sb-ifc} shows the interface of SB.
+Now we explain each interface method:
+\begin{itemize}
+    \item Method \code{isEmpty}: returns true if SB is empty.
+    This is called typically when a fence instruction is executed for a system instruction is committed.
+    
+    \item Method \code{getEnqIndex}: returns the index for a SB entry to insert a new store.
+    The entry may be a new entry or an existing entry which contains some other stores for the same cache line.
+    An \code{Invalid} is returned if no entry can be found.
+    
+    \item Method \code{enq}: inserts a store into the SB entry at index \code{idx}.
+    Argument \code{idx} should be the return value of \code{getEnqIndex}.
+    Arguments \code{be} and \code{data} should be shifted to represent a masked 8B aligned data.
+    (Lower bits of \code{paddr} are not used.)
+    
+    \item Method \code{deq}: removes the SB entry at index \code{idx}.
+    This is called when L1 gets exclusive permission for the cache line.
+    
+    \item Method \code{issue}: returns a SB entry that has not been issued to L1 before.
+    The entry is not removed from SB.
+    L1 will use the address in the SB entry to fetch exclusive permission for the cache line.
+    
+    \item Method \code{search}: finds bypass and stall for a issuing load in SB.
+    Argument \code{be} should be shifted to indicate the valid bytes in a 8B aligned data.
+    In case bypass is possible, a 8B aligned data is returned, so the caller needs to shift data before writing to register file.
+    
+    \item Methods \code{noMatchLdQ} and \code{noMatchStQ}: check if a Lr/Sc/Amo address exists in SB.
+    They are called when we try to dequeue a Lr/Sc/Amo from LQ or SQ.
+\end{itemize}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of SB is:
+\begin{itemize}
+    \item \{\code{isEmpty}, \code{issue}, \code{search}\} $<$ \code{deq} $<$ \code{getEnqIndex} $<$ \code{enq}
+    \item All others are CF
+\end{itemize}
+
+\subsubsection{Implementation}
+The implementation uses a vector of EHRs to keep the SB entries.
+We use a FIFO \code{freeQ} to keep the indices of free SB entries.
+We also use a FIFO \code{issueQ} to keep the indices of SB entries that need to be issued to L1.
+A newly allocated entry in method \code{enq} will be inserted into \code{issueQ}, and method \code{issue} will dequeue \code{issueQ} and issue the SB entry pointed by the head of \code{issueQ}.
+
+\subsubsection{Source Code}
+See module \code{mkStoreBufferEhr} in \code{//procs/lib/StoreBuffer.bsv}.
+
