@@ -118,6 +118,9 @@ Since there are many modules in the core, assigning conflict matrices to differe
 To simplify the problem, we following the convention of \emph{reverse pipeline ordering} in assigning conflict matrices.
 \emph{That is, rules representing later stages in the processor pipeline (e.g., commit) are ordered before rules representing earlier stages (e.g., rename), and thus, interface methods called in later stages are ordered before methods called in earlier stages.}
 
+Another principle in scheduling is to have common rules fire concurrently.
+\emph{It is ok to have uncommon rules (e.g., mis-speculation) conflict with each other and even common rules.}
+
 \noindent\textbf{System Instructions:}
 Some instructions can change the context of the processor and are difficult to be executed out of order or concurrently with other instructions.
 These instructions are called \emph{system instructions}, and include the following instructions:

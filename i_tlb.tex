@@ -7,6 +7,34 @@ As a consequence, it also sends responses in the order of requests.
 
 \begin{figure}
 \begin{lstlisting}[caption={}]
-
+interface ITlb;
+  method Bool flush_done;
+  method Action flush;
+  method Action updateVMInfo(VMInfo vm);
+  method Bool noPendingReq;
+  interface Server#(Addr, TlbResp) to_proc;
+  interface ITlbToParent toParent;
+  interface Perf#(L1TlbPerfType) perf;
+endinterface
 \end{lstlisting}
+\caption{Interface of I TLB}\label{fig:i-tlb-ifc}
 \end{figure}
+
+Figure~\ref{fig:i-tlb-ifc} shows the interface of the I TLB:
+\begin{itemize}
+    \item Subinterface \code{to\_proc}: contains a request and response interfaces.
+    The request interface takes in a virtual address, and the response interface returns the translation result.
+    The response order matches the request order.
+    \item Other methods are similar to those in D TLB (Section~\ref{sec:d-tlb})
+\end{itemize}
+
+\subsubsection{Implementation}
+The implementation uses one register to a missing request, so it will block if there is a miss.
+The detailed implementation is a simplified version of the D TLB (Section~\ref{sec:d-tlb}).
+
+\subsubsection{Future Improvement}
+We can try to make the I TLB able to support multiple misses.
+However, there may not be any improvement because of the locality in instruction fetch.
+
+\subsubsection{Source Code}
+See module \code{mkITlb} in \code{//procs/lib/ITlb.bsv}.
