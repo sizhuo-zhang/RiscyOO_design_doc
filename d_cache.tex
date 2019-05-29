@@ -1,4 +1,4 @@
-\subsection{L1 D Cache}
+\subsection{L1 D Cache}\label{sec:d-cache}
 
 The L1 D cache takes requests from LSQ and store buffer, and will exchange coherence traffic with L2 cache.
 
@@ -27,8 +27,8 @@ endinterface
 interface DCoCache;
   interface L1ProcReq#(DProcReqId) procReq;
   method Action resetLinkAddr;
-  interface Perf#(L1DPerfType) perf;
   interface ChildCacheToParent#(L1Way, void) to_parent;
+  interface Perf#(L1DPerfType) perf;
   interface Get#(L1DCRqStuck) cRqStuck;
   interface Get#(L1DPRqStuck) pRqStuck;
 endinterface

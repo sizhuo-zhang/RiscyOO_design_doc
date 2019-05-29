@@ -1,0 +1,45 @@
+\subsection{L1 I Cache}
+
+The I cache is very similar to the D cache.
+The major difference is that I cache sends responses in the same order as the original requests, even though it may processes misses out of order.
+The I cache is also coherent with the parent L2.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface ICoCache;
+  interface Server#(Addr, Vector#(SupSize, Maybe#(Instruction))) to_proc;
+  interface ChildCacheToParent#(L1Way, void) to_parent;
+  interface Perf#(L1IPerfType) perf;
+  interface Get#(L1ICRqStuck) cRqStuck;
+  interface Get#(L1IPRqStuck) pRqStuck;
+endinterface
+module mkICoCache(ICoCache);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of I cache}\label{fig:i-cache-ifc}
+\end{figure}
+
+Figure~\ref{fig:i-cache-ifc} shows the interface of the I cache.
+Now we explain the interface:
+\begin{itemize}
+    \item Subinterface \code{to\_proc}: is a pair of request and response interfaces.
+    The request interface takes in an address.
+    For this request, the I cache will fetch consecutive instructions starting from this address.
+    The fetch will stop until it hits the cache boundary or the number of the fetched instruction reaches the superscalar size.
+    The response order is the same as the request order, but the I cache can process multiple misses in parallel.
+    \item Other interfaces are similar to those in D cache (Section~\ref{sec:d-cache}).
+\end{itemize}
+
+\subsubsection{Implementation}
+The implementation is very similar to D cache except that responses are sent to the core in order.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkICoCache} in \code{//procs/lib/L1CoCache.bsv}, and
+    \item module \code{mkIBank} in \code{//coherence/src/IBank.bsv}.
+\end{itemize}
+
