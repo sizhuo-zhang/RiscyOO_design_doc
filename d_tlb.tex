@@ -1,0 +1,99 @@
+\subsection{L1 D TLB}
+The D TLB contains a fully associative array of page-table entries (PTEs).
+A hit takes only one cycle.
+The D TLB can process multiple requests and misses in parallel, and will send responses to the core out of order.
+Requests in D TLB are speculative, so D TLB also carries speculation masks for the requests.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+typedef struct {
+  Addr  addr;
+  Bool  write;
+} TlbReq deriving(Eq, Bits, FShow);
+typedef Tuple2#(Addr, Maybe#(Exception)) TlbResp;
+typedef struct {
+  instT inst;
+  SpecBits specBits;
+} DTlbReq#(type instT) deriving(Bits, Eq, FShow);
+typedef struct {
+  TlbResp resp;
+  instT inst;
+  SpecBits specBits;
+} DTlbResp#(type instT) deriving(Bits, Eq, FShow);
+interface DTlb#(type instT);
+  method Bool flush_done;
+  method Action flush;
+  method Action updateVMInfo(VMInfo vm);
+  method Bool noPendingReq;
+  method Action procReq(DTlbReq#(instT) req);
+  method DTlbResp#(instT) procResp;
+  method Action deqProcResp;
+  interface DTlbToParent toParent;
+  interface SpeculationUpdate specUpdate;
+  interface Perf#(L1TlbPerfType) perf;
+endinterface
+module mkDTlb#(function TlbReq getTlbReq(instT inst))(DTlb#(instT));
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of D TLB}\label{fig:d-tlb-ifc}
+\end{figure}
+
+Interface \code{DTlb} takes in a type parameter \code{instT}, which is the payload of the instruction that is requesting D TLB.
+Argument \code{getTlbReq} for the D TLB module extracts the necessary information from the payload (\code{instT}) to assemble the TLB request (i.e., address and whether it is a write or not).
+Now we explain the details of interface \code{DTlb}:
+\begin{itemize}
+    \item Method \code{flush}: triggers a flush of the TLB.
+    \item Method \code{flush\_done}: returns true if the TLB has completed the flush.
+    \item Method \code{updateVMInfo}: updates the local copy of some virtual-memory CSRs in the TLB.
+    \item Method \code{noPendingReq}: returns true if the TLB does not have any in-flight requests.
+    \item Method \code{procReq}: is called by the core to send TLB requests.
+    \item Methods \code{procResp} and \code{deqProcResp}: form a FIFO-like dequeue interface.
+    \code{procResp} returns a TLB response, and \code{deqProcReq} dequeues it.
+    \item Subinterface \code{toParent}: contains FIFO interfaces to be connected to the parent L2 TLB.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
+    \item Subinterface \code{perf}: is for querying performance counters.
+\end{itemize}
+
+\noindent\textbf{Conflict Matrix:}
+The conflict matrix of the module is:
+\begin{itemize}
+    \item \code{procResp} $<$ \code{deqProcResp} $<$ \code{procReq} $<$ \code{correctSpeculation}
+    \item \code{incorrectSpeculation} C \{\code{deqProcResp}, \code{procReq}\}
+    \item \code{toParent} is conflict free with others.
+    \item \code{flush}, \code{flush\_done}, \code{noPendingReq}, and \code{updateVMInfo} are implementation dependent.
+\end{itemize}
+
+\subsubsection{Implementation}
+The implementation has an MSHR which is a vector of EHRs to keep the in-flight requests.
+THe MSHR entry will carry the speculation mask for each request.
+It also contains a fully associative array containing the cached PTEs.
+
+Method \code{procReq} allocates a MSHR entry for the new request, and searches the fully associative PTE array directly.
+If the search hits, then the MSHR entry is marked as ready to respond.
+Otherwise, the method marks the request as a miss and requests the parent L2 TLB.
+An internal rule \code{doPRs} receives responses from L2 TLB and marks the corresponding requests as ready to respond.
+The internal rule \code{doPRs} has the following ordering relations:
+\begin{itemize}
+    \item \code{deqProcResp} $<$ \code{doPRs} $<$ \code{procReq}
+    \item \code{incorrectSpeculation} C \code{doPRs}
+\end{itemize}
+
+We implemented an optimization to avoid duplicate requests to L2 TLB.
+When we are trying to issue a request to L2 TLB, if another request with the same virtual page number has already issued a request to L2 TLB, then we do not issue a duplicate one.
+The \code{doPRs} rule will try to satisfy as many in-flight requests as possible with a single response from L2 TLB.
+
+As for flushing the TLB, after the \code{flush} method is called, the D TLB will stop receiving new requests.
+After all in-flight requests have been responded, the fully associative array of PTEs is cleared.
+After that, D TLB requests L2 TLB to flush (via the \code{toParent} interface).
+The L2 TLB will start flushing after receiving flush requests from both the I TLB and the D TLB, and will respond I and D TLBs when it finishes the flush.
+After D TLB receives the flush response from the L2 TLB, the flush is done.
+
+\subsubsection{Future Improvement}
+The \code{flush} and \code{flush\_done} methods directly access some flag registers, and create some orderings between methods, which could complicate the scheduling of top-level rules of the processor core.
+A better implementation should export the flush functionality as a pair of request and response FIFO interfaces which are conflict-free with each other.
+
+\subsubsection{Source Code}
+See module \code{mkDTlb} in \code{//procs/lib/DTlb.bsv}.
