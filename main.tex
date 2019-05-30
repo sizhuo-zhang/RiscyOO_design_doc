@@ -135,8 +135,25 @@ System instructions are executed in a blocking way, i.e., the instruction will b
 
 
 \noindent\textbf{Detecting Interrupt:}
+We detect interrupts at \emph{rename} stage (instead of commit stage).
+When an interrupt is detected, the current instruction at the rename stage will be turned into a special instruction which represents the interrupt.
+The instruction will be entered into ROB and get processed at the commit stage.
+Here we assume the fetch pipeline will keep delivering instructions to the rename stage, i.e., there is no low-power mode which turns off instruction fetch.
+
+The benefits of detecting interrupts at rename stage is to ensure that all instructions in ROB are not affected by interrupts.
+As a result, out-of-order commits may be possible, though we did not implement any out-of-order commits.
 
 \noindent\textbf{Read-After-Write Hazards for CSRs:}
+Our implementation ensures that there is no read-after-write hazards on CSRs in the processor.
+CSRs can be modified by system instructions, exceptions, interrupts, and floating-point instructions.
+The invariant of no read-after-write hazards on CSRs is guaranteed in the following way: at the rename stage, if we see a system instruction (i.e., \code{csrrrw}), we enters the instruction into the ROB only if ROB is empty, and we flush the fetch pipeline at the same time.
+As a result, there cannot be any hazards regarding the writes on CSRs by system instructions, exceptions or interrupts.
+
+As for the hazards regarding the writes on CSRs by floating-point instructions.
+We notice that only the \code{csrrrw} instruction, which is a system instruction, can read the CSRs modified by floating-point instructions.
+Therefore, the writes by floating-point instructions cannot cause any hazards.
+
+It should be noted that there is no write-after-write or write-after-read hazards on CSRs, because all CSR writes are made at commit stage.
 
 \noindent\textbf{Organization:}
 In the rest of this section, we first introduce the general mechanism to control speculation in the back-end (Section~\ref{sec:specupdate}), and then describe each modules and top-level rules.
@@ -180,6 +197,8 @@ In the rest of this section, we first introduce the general mechanism to control
 \input{fpu}
 
 \input{int_mul_div}
+
+\input{csr_file}
 
 \section{Uncore}
 

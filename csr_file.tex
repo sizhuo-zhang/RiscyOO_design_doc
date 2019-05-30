@@ -1,0 +1,67 @@
+\subsection{CSR Register File}
+The CSR register file contains all the CSRs.
+Besides the official CSRs in the RISC-V ISA, it also includes two custom CSRs:
+\begin{itemize}
+    \item The stats CSR: controls whether performance counters will be incremented or not.
+    When the stats CSR of one processor core is written, the write will be automatically propagated to all other cores.
+    \item The terminate CSR: will terminate the whole processor when any value is written to it.
+\end{itemize}
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface CsrFile;
+  method Data rd(CSR csr);
+  method Action csrInstWr(CSR csr, Data x);
+  method Bool fpuInstNeedWr(Bit#(5) fflags, Bool fpu_dirty);
+  method Action fpuInstWr(Bit#(5) fflags);
+  method Maybe#(Interrupt) pending_interrupt;
+  method ActionValue#(Addr) trap(Trap t, Addr pc, Addr faultAddr);
+  method ActionValue#(Addr) sret;
+  method ActionValue#(Addr) mret;
+  method VMInfo vmI;
+  method VMInfo vmD;
+  method CsrDecodeInfo decodeInfo;
+  method Action incInstret(SupCnt x);
+  method Action setTime(Data t);
+  method Bit#(1) getMSIP;
+  method Action setMSIP(Bit#(1) v);
+  method Action setMTIP(Bit#(1) v);
+  method Bool doPerfStats;
+  method ActionValue#(Bool) sendDoStats;
+  method Action recvDoStats(Bool s);
+  method ActionValue#(void) terminate;
+endinterface
+module mkCsrFile#(Data hartid)(CsrFile);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of CSR register file}\label{fig:csr-file-ifc}
+\end{figure}
+
+Figure~\ref{fig:csr-file-ifc} shows the interface of the CSR register file:
+\begin{itemize}
+    \item Method \code{rd}: returns the value of a given CSR.
+    \item Method \code{csrInstWr}: updates a CSR when a \code{csrrw} instruction is committed.
+    \item Method \code{fpuInstNeedWr}: returns whether a floating-point instruction needs to update the \code{fcsr} CSR.
+    \item Method \code{fpuInstWr}: updates the \code{fcsr} CSR when a a floating-point instruction is committed.
+    \item Method \code{pending\_interrupt}: returns any pending interrupts.
+    \item Method \code{trap}: updates the CSRs for an exception or interrupt (at commit stage), and returns the next PC (i.e., the entry to the interrupt/exception handler).
+    \item Methods \code{sret} and \code{mret}: udpates the CSRs when a return-from-trap instruction is committed, and returns the next PC.
+    \item Methods \code{vmI}, \code{vmD} and \code{decodeInfo}: return some CSR contents that may be used in other parts of the processor.
+    \item Method \code{incInstret}: increments the \code{minstret} CSR by the number of committed instructions in this cycle.
+    \item Method \code{setTime}: updates the local copy of the machine time (the original machine time register is maintained in the uncore).
+    \item Methods \code{getMSIP}, \code{setMSIP}, \code{setMTIP}: provide accesses on the interrupt pending bits (such accesses are made by the uncore).
+    \item Method \code{doPerfStats}: returns whether performance counters should be incremented or not.
+    \item Methods \code{sendDoStats} and \code{recvDoStats}: propagate the changes on the stats CSR between processor cores.
+    \item Method \code{terminate}: indicates the whole processor should be shutdown because of writes on the terminate CSR, if the method is ready.
+\end{itemize}
+The module argument \code{hartid} is the core ID.
+
+\subsubsection{Implementation}
+Since there is no read-after-write hazards on CSRs, we use Bluespec \code{mkConfigReg} to implement each CSR.
+This avoids unncessary constraints on rule scheduling.
+
+\subsubsection{Source Code}
+See module \code{mkCsrFile} in \code{//procs/lib/CsrFile.bsv}.

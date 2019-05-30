@@ -59,6 +59,10 @@ The FIFO contains all the in-flight instructions in the pipeline.
 When mis-speculation happens, wrong-path instructions will be poisoned in the FIFO.
 And when the wrong-path instruction is dequeued from the pipeline and the FIFO, it will be dropped.
 
+\subsubsection{Future Improvement}
+Since we are using the Xilnx IP cores for floating point computations, we do not follow strictly the RISC-V floating-point requirements, e.g., regarding rounding, overflow, underflow, etc.
+We may want to fix this in future.
+
 \subsubsection{Source Code}
 See the followings:
 \begin{itemize}
