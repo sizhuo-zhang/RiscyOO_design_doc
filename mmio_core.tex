@@ -76,3 +76,16 @@ It contains the following fields:
     (Exceptions do not touch the interrupt bits, so it is ok for ROB to contain instructions with exceptions.)
     This may be over conservative, because RISC-V ISA seems to guarantee that software cannot modify \code{MSIP} and \code{MTIP} bits.
 \end{itemize}
+
+\subsubsection{Implementation}
+The module allows only one outstanding a MMIO request from the core, because MMIO accesses are believed to be rare.
+
+When the module receives a request from the uncore platform to read or write the interrupt pending bits, it takes actions only when the \code{noInflightCSRInstOrInterrupt} method of the module argument interface returns true.
+After taking the action, it sends a response to the uncore platform.
+
+\subsubsection{Future Improvement}
+As mentioned earlier, checking method \code{noInflightCSRInstOrInterrupt} before handling requests from uncore platform may be too conservative.
+We should consider removing this check in the future.
+
+\subsubsection{Source Code}
+See module \code{mkMMIOCore} in \code{//procs/lib/MMIOCore.bsv}.
