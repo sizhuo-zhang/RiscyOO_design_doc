@@ -1,0 +1,13 @@
+\subsection{Integer Multiplier and Divider}
+
+This module is very similar to the FPU (Section~\ref{sec:fpu}).
+The only difference is that this module contains an integer-multiply unit and an integer-divide unit instead of four floating-point execution units.
+We will skip the details of this module.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkMulDivExec} in \code{//procs/lib/MulDiv.bsv},
+    \item module \code{mkXilinxIntMul} in \code{//fpgautils/lib/XilinxIntMul.bsv}, and
+    \item module \code{mkXilinxIntDiv} in \code{//fpgautils/lib/XilinxIntDiv.bsv}.
+\end{itemize}

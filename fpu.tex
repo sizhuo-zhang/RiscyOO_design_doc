@@ -1,0 +1,67 @@
+\subsection{FPU}~\label{sec:fpu}
+
+The FPU module contains the following floating-point execution units:
+\begin{itemize}
+    \item Simple unit: performs simple operations, e.g., converting between integer and floating point.
+    \item FMA (fused-multiply-add) unit: performs add, multiply and FMA.
+    \item Divide unit: performs division.
+    \item Square-root unit: calculates the square root.
+\end{itemize}
+Every floating point instruction will use one of the execution units.
+Since different execution units can have different latency and throughput, FPU will respond out of order.
+FPU also keeps the speculation mask for each instruction inside, so wrong-path instructions will be dropped inside FPU and will not be outputted.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface FpuExec;
+  method Action exec(FpuInst fpu_inst, Data rVal1, Data rVal2, Data rVal3,
+  Maybe#(PhyDst) dst, InstTag tag, SpecBits specBits);
+  method ActionValue#(FpuResp) simpleResp;
+  method ActionValue#(FpuResp) fmaResp;
+  method ActionValue#(FpuResp) divResp;
+  method ActionValue#(FpuResp) sqrtResp;
+  interface SpeculationUpdate specUpdate;
+endinterface
+module mkFpuExecPipeline(FpuExec);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of FPU}\label{fig:fpu-ifc}
+\end{figure}
+
+Figure~\ref{fig:fpu-ifc} shows the interface of FPU:
+\begin{itemize}
+    \item Method \code{exec}: is called to send a new floating point instruction \code{fpu\_inst} into the FPU.
+    This method will dispatch the instruction to the appropriate execution unit.
+    Notice that argument \code{specBits} is used to kill wrong-path instructions inside FPU.
+    \item Methods \code{simpleResp}, \code{fmaResp}, \code{divResp}, \code{sqrtResp}: return the responses from the simple, FMA, divide, and square-root units, respectively.
+    Wrong-path instructions will not be returned.
+    \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
+\end{itemize}
+
+\noindent\textbf{Conflict Matrix:}
+\begin{itemize}
+    \item \{\code{simpleResp}, \code{fmaResp}, \code{divResp}, \code{sqrtResp}\} $<$ \code{exec}.
+    \item \code{simpleResp}, \code{fmaResp}, \code{divResp}, \code{sqrtResp} are conflict-free with each other.
+\end{itemize}
+
+
+\subsubsection{Implementation}
+The simple unit is just a speculation FIFO (Section~\ref{sec:specfifo}).
+For an instruction that goes into the simple unit, the \code{exec} method directly computes the result and enters the result into the FIFO.
+
+The FMA, divide and square-root units are implemented in the same way.
+For each unit, the real computation pipeline is a Xilinx IP core.
+There is a speculative poisoned FIFO (Section~\ref{sec:specpoisonfifo}) accompanying the pipeline.
+The FIFO contains all the in-flight instructions in the pipeline.
+When mis-speculation happens, wrong-path instructions will be poisoned in the FIFO.
+And when the wrong-path instruction is dequeued from the pipeline and the FIFO, it will be dropped.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkFpuExecPipeline} in \code{//procs/lib/Fpu.bsv}, and
+    \item all modules in \code{//fpgautils/lib/XilinxFpu.bsv}.
+\end{itemize}
