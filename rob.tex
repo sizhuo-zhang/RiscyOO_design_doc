@@ -60,11 +60,11 @@ Now we explain each field (``the instruction'' refers to the instruction in the 
     
     \item \code{fflags}: is the status flags (e.g., overflow and underflow) of the FPU computation performed by the instruction in case the instruction is an FPU instruction.
     It is set when the FPU computation is done in the execution pipeline.
-    It will be used at the commit stage to update an CSR for FPU.
+    It will be used at the commit stage to update CSR \code{fcsr}.
     
     \item \code{will\_dirty\_fpu\_state}: is true if the destination register of the instruction is an floating point register.
     It is set when the instruction is enqueued into ROB at the renaming stage.
-    It will be used at the commit stage to update an CSR for FPU.
+    It will be used at the commit stage to update CSR \code{fcsr}.
     
     \item \code{rob\_inst\_state}: is a single bit to represent if the instruction has finished execution or not.
     Its value is either \code{Executed} or \code{NotDone}.

@@ -7,11 +7,6 @@ It contains the I cache, I TLB, PC register, branch predictors, and decode logic
 
 \begin{figure}
 \begin{lstlisting}[caption={}]
-interface MMIOInstToCore;
-  interface FifoDeq#(Tuple2#(Addr, SupWaySel)) instReq;
-  interface FifoEnq#(Vector#(SupSize, Maybe#(Instruction))) instResp;
-  method Action setHtifAddrs(Addr toHost, Addr fromHost);
-endinterface
 interface FetchStage;
   interface Vector#(SupSize, SupFifoDeq#(FromFetchStage)) pipelines;
   interface ITlb iTlbIfc;
@@ -31,7 +26,7 @@ endmodule
 \caption{Interface of fetch pipeline}\label{fig:fetch-fic}
 \end{figure}
 
-Figure~\ref{fig:fetch-fic} shows the interface of the fetch pipeline:
+Figure~\ref{fig:fetch-fic} shows the interface (\code{FetchStage}) of the fetch pipeline:
 \begin{itemize}
     \item Subinterface \code{pipelines}: is a vector of FIFO-dequeue interfaces.
     The rename stage will dequeue these FIFO interfaces to retrieve decoded instructions.

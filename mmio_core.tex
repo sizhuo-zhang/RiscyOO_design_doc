@@ -1,1 +1,78 @@
 \subsection{MMIO Hanlder}\label{sec:mmio-core}
+
+The MMIO handler delivers the following MMIO accesses made inside the processor core to the uncore platform:
+\begin{itemize}
+    \item boot-rom accesses to fetch instructions, and
+    \item MMIO data accesses made by memory instructions in LSQ.
+\end{itemize}
+The module also processes the following requests from the uncore platform:
+\begin{itemize}
+    \item posting timer interrupt (the \code{MTIP} bit),
+    \item reading and writing the software interrupt bit (\code{MSIP}), and
+    \item updating the copy of the machine time in CSR register file.
+\end{itemize}
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface MMIOCoreToPlatform;
+  interface FifoDeq#(MMIOCRq) cRq;
+  interface FifoEnq#(MMIOPRs) pRs;
+  interface FifoEnq#(MMIOPRq) pRq;
+  interface FifoDeq#(MMIOCRs) cRs;
+  method Action setTime(Data t);
+endinterface
+interface MMIOCore;
+  method Bool isMMIOAddr(Addr addr);
+  method Action dataReq(MMIOCRq r);
+  method MMIODataPRs dataRespVal;
+  method Action dataRespDeq;
+  method Action setHtifAddrs(Addr toHost, Addr fromHost);
+  method Bool hasPendingPRq;
+  interface MMIOCoreToPlatform toP;
+endinterface
+interface MMIOInstToCore;
+  interface FifoDeq#(Tuple2#(Addr, SupWaySel)) instReq;
+  interface FifoEnq#(Vector#(SupSize, Maybe#(Instruction))) instResp;
+  method Action setHtifAddrs(Addr toHost, Addr fromHost);
+endinterface
+interface MMIOCoreInput;
+  interface MMIOInstToCore fetch;
+  method Bit#(1) getMSIP;
+  method Action setMSIP(Bit#(1) v);
+  method Action setMTIP(Bit#(1) v);
+  method Action setTime(Data t);
+  method Bool noInflightCSRInstOrInterrupt;
+endinterface
+module mkMMIOCore#(MMIOCoreInput inIfc)(MMIOCore);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of MMIO handler}\label{fig:mmio-core-ifc}
+\end{figure}
+
+Figure~\ref{fig:mmio-core-ifc} shows the interface of the MMIO handler module.
+Module interface \code{MMIOCore} contains the following fields:
+\begin{itemize}
+    \item Method \code{isMMIOAddr}: returns true if physical address \code{addr} is a MMIO address.
+    The \code{tohost} and \code{fromhost} addresses used in the BBL (Berkeley boot loader) are also considered as MMIO addresses.
+    \item Method \code{dataReq}: sends a MMIO requests to uncore platform.
+    \item Methods \code{dataRespVal} and \code{dataRespDeq}: gets the MMIO response from uncore platform.
+    \item Method \code{setHtifAddrs}: tells the MMIO handler what are the \code{tohost} and \code{fromhost} addresses.
+    \item Method \code{hasPendingPRq}: returns true if the handler has received a request from the uncore platform.
+    The rename stage calls this method to stop renaming and let the MMIO handler to complete the request from uncore platform.
+    This can avoid conflicting accesses on CSRs, because rename stage checks interrupts while the uncore-platform request may post interrupts.
+    \item Subinterface \code{toP}: contains FIFO interfaces connected to the uncore platform.
+    It also contains a \code{setTime} methods to let the uncore platform to update the copy of machine time in CSR register file.
+\end{itemize}
+Interface \code{MMIOCoreInput} is the argument passed  to the module.
+It contains the following fields:
+\begin{itemize}
+    \item Subinterface \code{fetch}: contains FIFO interfaces of the fetch pipeline to access boot rom in the uncore platform.
+    \item Methods \code{getMSIP}, \code{setMSIP}, \code{setMTIP}, and \code{setTime}: are from CSR register file to update the CSRs.
+    \item Method \code{noInflightCSRInstOrInterrupt}: returns true if the ROB  does not contain any \code{csrrw} instructions or interrupt instructions.
+    The MMIO handler processes a request from uncore platform only when this method returns true to avoid conflicting accesses on CSRs.
+    (Exceptions do not touch the interrupt bits, so it is ok for ROB to contain instructions with exceptions.)
+    This may be over conservative, because RISC-V ISA seems to guarantee that software cannot modify \code{MSIP} and \code{MTIP} bits.
+\end{itemize}
