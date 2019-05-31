@@ -1,0 +1,39 @@
+\subsection{Commit Stage}
+
+The commit stage is logically a single rule that commit instructions in order.
+In implementation, it is implemented as the following mutually exclusive rules:
+\begin{itemize}
+    \item Rule \code{doCommitTrap\_flush}: processes a trap, i.e., an exception or an interrupt.
+    It kills all instructions in the back-end, and if the trap happens after the rename stage, we increment the epoch in the epoch manager and tell the fetch pipeline to wait for redirection.
+    We also record the trap information into a register to be processed in the next cycle.
+    \item Rule \code{doCommitTrap\_handle}: completes the process of the trap in rule \code{doCommitTrap\_flush}.
+    This rule calls method \code{trap} of the CSR register file to update CSRs and get the next PC, and redirects and fetch pipeline.
+    This rule also calls a function \code{makeSystemConsistent} to initiate the necessary flush of local storage (e.g., TLBs) and the update of local copies of CSRs in other modules (e.g., the virtual-memory related CSRs in TLBs).
+    The miscellaneous rules in Section~\ref{sec:misc-rules} will truly complete the flush and update and then resume the fetch pipeline.
+    \item Rule \code{doCommitSystemInst}: commits a single system instruction.
+    It accesses the CSR register file, redirect fetch pipeline, and call function \code{makeSystemConsistent} if necessary.
+    It should be noted that we have already incremented the epoch manager for this instruction in the rename stage, so we do not need to do it again here.
+    \item Rule \code{doCommitKilledLd}: processes a mis-speculative load that violates memory ordering.
+    We need to re-execute this load, so we kill all instructions in the back-end, redirect the fetch pipeline to the PC of the load, and increment the epoch manager.
+    \item Rule \code{notifyLSQCommit}: fires when the oldest instruction in ROB is a memory instruction that needs to be executed right at commit time (e.g., a MMIO or load-reserve or store-conditional or AMO).
+    We notify the LSQ that the instruction has arrived at the commit slot and can start execution.
+    \item Rule \code{doCommitNormalInst}: performs superscalar commits of normal instructions.
+    If we have committed a store, we also notify LSQ that the store is committed, and thus, the store can be retired from the LSQ.
+\end{itemize}
+The notification to LSQ about committing/committed instructions are done using \emph{wires}.
+That is, rules \code{notifyLSQCommit} and \code{doCommitNormalInst} records the the instructions in wires, and another rule reads the values of the wires and call the \code{setAtCommit} methods of LSQ.
+We use wires here because of rule-scheduling issues: the ordering of the \code{setAtCommit} methods and other methods in LSQ are incompatible with the rule-scheduling conventional (i.e., reverse pipeline ordering).
+The use of wires is unsatisfactory because the correctness argument of using wires is quite subtle.
+The wires can raise problems if we are killing all instructions in the back-end and notifying LSQ about committed instructions in the same cycle.
+This is because the \code{incorrectSpeculation} method that kills all instructions need to check the \code{committed} bits in LSQ which are set by the \code{setAtCommit} method.
+Fortunately, this case can never happen in our implementation.
+
+\subsubsection{Future Improvement}
+We need to fix the wire problem mentioned above.
+One way is to change the implementation of \code{setAtCommit} of LSQ.
+Instead of directly setting the \code{committed} bits in LSQ in the method, we can have a FIFO in LSQ which will be enqueued by method \code{setAtCommit}, and add a new rule inside LSQ to dequeue the FIFO and set the \code{committed} bits.
+The \code{incorrectSpeculation} methods should conflict with the \code{setAtCommit} method, and cannot fire if the FIFO is not empty.
+In this way, the \code{setAtCommit} method of LSQ will be conflict free with other methods of LSQ, and we can directly call the method in the commit rules.
+
+\subsubsection{Source Code}
+See module \code{mkCommitStage} in \code{//procs/RV64G\_OOO/CommitStage.bsv}.
