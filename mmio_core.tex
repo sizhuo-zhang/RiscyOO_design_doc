@@ -71,7 +71,7 @@ It contains the following fields:
 \begin{itemize}
     \item Subinterface \code{fetch}: contains FIFO interfaces of the fetch pipeline to access boot rom in the uncore platform.
     \item Methods \code{getMSIP}, \code{setMSIP}, \code{setMTIP}, and \code{setTime}: are from CSR register file to update the CSRs.
-    \item Method \code{noInflightCSRInstOrInterrupt}: returns true if the ROB  does not contain any \code{csrrw} instructions or interrupt instructions.
+    \item Method \code{noInflightCSRInstOrInterrupt}: returns true if the ROB  does not contain any \inst{CSRRW} instructions or interrupt instructions.
     The MMIO handler processes a request from uncore platform only when this method returns true to avoid conflicting accesses on CSRs.
     (Exceptions do not touch the interrupt bits, so it is ok for ROB to contain instructions with exceptions.)
     This may be over conservative, because RISC-V ISA seems to guarantee that software cannot modify \code{MSIP} and \code{MTIP} bits.

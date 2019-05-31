@@ -43,12 +43,12 @@ endmodule
 Figure~\ref{fig:csr-file-ifc} shows the interface of the CSR register file:
 \begin{itemize}
     \item Method \code{rd}: returns the value of a given CSR.
-    \item Method \code{csrInstWr}: updates a CSR when a \code{csrrw} instruction is committed.
+    \item Method \code{csrInstWr}: updates a CSR when a \inst{CSRRW} instruction is committed.
     \item Method \code{fpuInstNeedWr}: returns whether a floating-point instruction needs to update the \code{fcsr} CSR.
     \item Method \code{fpuInstWr}: updates the \code{fcsr} CSR when a a floating-point instruction is committed.
     \item Method \code{pending\_interrupt}: returns any pending interrupts.
     \item Method \code{trap}: updates the CSRs for an exception or interrupt (at commit stage), and returns the next PC (i.e., the entry to the interrupt/exception handler).
-    \item Methods \code{sret} and \code{mret}: udpates the CSRs when a return-from-trap instruction is committed, and returns the next PC.
+    \item Methods \code{sret} and \code{mret}: udpates the CSRs when a return-from-trap instruction (\inst{SRET} or \inst{MRET}) is committed, and returns the next PC.
     \item Methods \code{vmI}, \code{vmD} and \code{decodeInfo}: return some CSR contents that may be used in other parts of the processor.
     \item Method \code{incInstret}: increments the \code{minstret} CSR by the number of committed instructions in this cycle.
     \item Method \code{setTime}: updates the local copy of the machine time (the original machine time register is maintained in the uncore).
