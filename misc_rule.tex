@@ -1,1 +1,14 @@
 \subsection{Miscellaneous Top-Level Rules}\label{sec:misc-rules}
+
+At the top level, the following rules have not been covered before:
+\begin{itemize}
+    \item Rule \code{prepareCacheAndTlbs}: As mentioned in Section~\ref{sec:commit}, the \code{makeSystemConsistent} function called at the commit stage just initiates the flush of local storage or updates of local copies of CSRs.
+    In fact, that function just sets a few flag registers, and the real work of flushing or updating is carried out in this rule.
+    \item Rule \code{readyToFetch}: resumes the fetch pipeline to fetch instructions.
+    As mentioned in Section~\ref{sec:fetch}, the fetch pipeline still does not fetch instructions after the \code{redirect} method is called because the commit stage may be still flushing some storage.
+    More precisely, we need to wait for the work specified in the \code{makeSystemConsistent} function to be done.
+    If all the flag registers set by the the \code{makeSystemConsistent} function have been unset and all the flushes have completed (e.g., by checking the \code{flush\_done} methods of TLBs), then this rule calls the \code{done\_flushing} method of the fetch pipeline to result instruction fetch.
+\end{itemize}
+
+\subsubsection{Source Code}
+See \code{//procs/RV64G\_OOO/Core.bsv}.

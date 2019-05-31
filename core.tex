@@ -1,0 +1,46 @@
+\subsection{Processor Core: Putting it All Together}
+The top-level processor-core module has been shown in Figure~\ref{fig:core}, and we have explained all the submodules and  top-level rules of it.
+Here we briefly introduce its interface to the uncore.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface CoreReq;
+  method Action start(Addr startpc, Addr toHostAddr, Addr fromHostAddr);
+  method Action perfReq(PerfLocation loc, PerfType t);
+endinterface
+interface CoreIndInv;
+  method ActionValue#(ProcPerfResp) perfResp;
+  method ActionValue#(void) terminate;
+endinterface
+interface Core;
+  interface CoreReq coreReq;
+  interface CoreIndInv coreIndInv;
+  interface ChildCacheToParent#(L1Way, void) dCacheToParent;
+  interface ChildCacheToParent#(L1Way, void) iCacheToParent;
+  interface TlbMemClient tlbToMem;
+  interface MMIOCoreToPlatform mmioToPlatform;
+  method ActionValue#(Bool) sendDoStats;
+  method Action recvDoStats(Bool x);
+endinterface
+module mkCore#(CoreId coreId)(Core);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of the processor core}\label{fig:core-ifc}
+\end{figure}
+
+Figure~\ref{fig:core-ifc} shows the interface (\code{Core}) of the processor core:
+\begin{itemize}
+    \item Subinterface \code{coreReq}: contains method \code{start} to start the processor core (i.e., reset PC and start fetching instructions), and method \code{perfReq} to query performance counters.
+    \item Subinterface \code{coreIndInv}: contains method \code{perfResp} to return the values of performance counters, and method \code{terminate} to signal that the terminate CSR has been written and the processor should be shutdown.
+    \item Subinterfaces \code{dCacheToParent} and \code{iCacheToParent}: are FIFO interfaces of D cache and I cache, respectively, which will be connected to the shared L2 cache.
+    \item Subinterface \code{tlbToMem}: contains FIFO interfaces of the L2 TLB which will be connected to the shared L2 cache for performing page walks.
+    \item Subinterface \code{mmioToPlatform}: is the interface of the MMIO handler which should be connected to the uncore platform.
+    \item Methods \code{sendDoStats} and \code{recvDoStats}: broadcast changes on the stats CSR which controls whether performance counters should be turned on or off.
+\end{itemize}
+The module argument \code{coreId} is the core ID.
+
+\subsubsection{Source Code}
+See module \code{mkCore} in \code{//procs/RV64G\_OOO/Core.bsv}.
