@@ -47,7 +47,7 @@ It contains the following fields:
     \item Method \code{rob\_setExecuted}: sets the ROB entry as executed, so the instruction can be committed if it is the oldest in ROB.
     \item Method \code{fetch\_train\_predictors}: trains the branch predictors in the fetch pipeline.
     \item Method \code{setRegReadyAggr}: wakes up dependent instructions in all the reservation stations, and sets the aggressive scoreboard.
-    \item Subinterface \code{sendBypass}: is called by the module to send out data forwardings to other execution pipelines and itself.
+    \item Subinterface \code{sendBypass}: is called by the module to send out data bypassing to other execution pipelines and itself.
     \item Method \code{writeRegFile}: writes the physical register file.
     \item Method \code{redirect}: redirects the fetch pipeline, increments the epoch in the epoch manager, and calls the global speculation updater to kill wrong-path instructions (i.e., call the \code{incorrectSpeculation} method of every module).
     This method is called by the ALU execution pipeline in case of branch mispreditions.
@@ -57,7 +57,7 @@ It contains the following fields:
 \end{itemize}
 The module interface \code{AluExePipeline} contains the following fields:
 \begin{itemize}
-    \item Subinterface \code{recvBypass}: receives the data forwardings sent by other execution pipelines and itself.
+    \item Subinterface \code{recvBypass}: receives the data bypassing sent by other execution pipelines and itself.
     That is, interface \code{sendBypass} in the module argument will call this interface.
     \item Subinterface \code{rsAluIfc}: returns the reservation station inside the pipeline.
     \item Subinterface \code{specUpdate}: manipulates speculative states (Section~\ref{sec:specupdate}).
@@ -74,23 +74,24 @@ The module interface \code{AluExePipeline} contains the following fields:
 
 Figure~\ref{fig:alu-exe-pipe-impl} shows the internal implementation of the ALU execution pipeline.
 All the pipeline stages are connected by speculation FIFOs (Section~\ref{sec:specfifo}).
-Sending and receiving data forwardings are done by using \emph{wires}.
+Sending and receiving data bypassing are done by using \emph{wires}.
 The pipeline contains the following four internal rules:
 \begin{itemize}
     \item Rule \code{doDispatchAlu}: retrieves a ready instruction from the reservation station.
-    \item Rule \code{doRegReadAlu}: first checks data forwardings and then checks the conservative scoreboard and physical register if forwarding is not available.
+    \item Rule \code{doRegReadAlu}: first checks data bypassing and then checks the conservative scoreboard and physical register if forwarding is not available.
     The rule will not fire if a source register is not available.
     \item Rule \code{doExeAlu}: executes the instruction by performing the ALU operation or calculating the next PC.
     The result for the destination register is sent to a wire which will be exported as the \code{sendBypass} interface.
-    \item Rule \code{doFinishAlu}: marks the ROB entry as executed, and sends data forwarding to a wire.
+    \item Rule \code{doFinishAlu}: marks the ROB entry as executed, and sends data bypassing to a wire.
     In case of a branch, either \code{correctSpec} or \code{redirect} will be called.
     To avoid conflict with other rules, this rule is split into two based on whether a branch is mispredicted or not.
     The common case without mispredictions will not conflict with other common rules.
 \end{itemize}
+The use of wires for bypassing does not affect correctness, because the \code{doRegReadAlu} rule will not fire until the source-register values are available.
 
 \subsubsection{Future Improvement}
-We should remove the wires for data forwardings.
-An alternative way is to add a bypass method to every pipeline-stage FIFO, and sending data forwardings is directly calling this method of all the relevant pipeline-stage FIFOs.
+We should remove the wires for data bypassing.
+An alternative way is to add a bypass method to every pipeline-stage FIFO, and sending data bypassing is directly calling this method of all the relevant pipeline-stage FIFOs.
 
 \subsubsection{Source Code}
 See module \code{mkAluExePipeline} in \code{//procs/RV64G\_OOO/AluExePipeline.bsv}.

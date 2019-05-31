@@ -1,8 +1,14 @@
 \subsection{FPU (and Integer Multiply/Divide) Execution Pipeline}
 
 The FPU execution pipeline is very similar to the ALU execution pipeline (Section~\ref{sec:alu-exe-pip}).
-The only difference is that instead of computing the result in a single rule, the \code{doExe} rule sends the instruction to the FPU module or the integer multiply and divide module for computation.
-The \code{doFinish} rule will pick up the instructions outputted by these two submodules.
+The differences are:
+\begin{itemize}
+    \item Instead of computing the result in a single rule, the \code{doExe} rule sends the instruction to the FPU module or the integer multiply and divide module for computation.
+    The \code{doFinish} rule will pick up the instructions outputted by these two submodules.
+    \item This pipeline receives data bypassing from the ALU execution pipelines, but it does not send out any data bypassing.
+\end{itemize}
+ is that 
+
 We skip the details here.
 
 \subsubsection{Source Code}

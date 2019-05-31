@@ -3,5 +3,22 @@
 The rename stage is logically a single rule that retrieves instructions from the fetch pipeline, performs superscalar renaming, and enters the instructions to the reservation stations of the execution pipelines.
 In implementation, this stage is implemented using the following mutually exclusive rules:
 \begin{itemize}
-    \item Rule 
+    \item Rule \code{doRenaming\_wrongPath}: drops wrong-path instructions.
+    This rule can drop multiple wrong-path instructions in a cycle.
+    \item Rule \code{doRenaming\_Trap}: processes a single instruction with exception or a single interrupt.
+    As mentioned earlier, this rule can fire only if the ROB is empty, and this rule will call method \code{setWaitRedirect} of the fetch pipeline and increment the epoch in the epoch manager.
+    \item Rule \code{doRenaming\_SystemInst}: processes a single system instruction.
+    As mentioned earlier, this rule can fire only if the ROB is empty, and this rule will call method \code{setWaitRedirect} of the fetch pipeline and increment the epoch in the epoch manager.
+    \item Rule \code{doRenaming}: processes normal instructions without exceptions.
+    This rule can rename multiple instructions in a cycle until one of the followings happens:
+    \begin{itemize}
+        \item We have reached the limit of superscalarity.
+        \item We see a wrong-path instruction or instruction with exception.
+        \item There is not enough hardware resource to process the instruction (e.g., not enough space in the reservation station, or not enough enqueue port to LSQ).
+    \end{itemize}
+    If one instruction can be dispatched to multiple execution pipelines (e.g., an ALU instruction), we try to send it to the pipeline whose reservation station has more free entries.
 \end{itemize}
+All the above renaming rules are stalled if there is a pending request from the uncore to read or write interrupt bits (Section~\ref{sec:mmio-core}).
+
+\subsubsection{Source Code}
+See module \code{mkRenameStage} in \code{//procs/RV64G\_OOO/RenameStage.bsv}.
