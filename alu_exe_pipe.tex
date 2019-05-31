@@ -1,4 +1,4 @@
-\subsection{ALU Execution Pipeline}
+\subsection{ALU Execution Pipeline}\label{sec:alu-exe-pip}
 
 The ALU execution pipeline executes ALU and branch instructions (including \inst{CSRRW} instructions).
 To sustain peak throughput for ALU instructions with back-to-back dependencies, the pipeline contains bypass logic and wakes up dependent instructions aggressively.
@@ -65,3 +65,32 @@ The module interface \code{AluExePipeline} contains the following fields:
 \end{itemize}
 
 \subsubsection{Implementation}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{fig/alu_exe_crop.pdf}
+    \caption{Internal implementation of ALU execution pipeline}\label{fig:alu-exe-pipe-impl}
+\end{figure}
+
+Figure~\ref{fig:alu-exe-pipe-impl} shows the internal implementation of the ALU execution pipeline.
+All the pipeline stages are connected by speculation FIFOs (Section~\ref{sec:specfifo}).
+Sending and receiving data forwardings are done by using \emph{wires}.
+The pipeline contains the following four internal rules:
+\begin{itemize}
+    \item Rule \code{doDispatchAlu}: retrieves a ready instruction from the reservation station.
+    \item Rule \code{doRegReadAlu}: first checks data forwardings and then checks the conservative scoreboard and physical register if forwarding is not available.
+    The rule will not fire if a source register is not available.
+    \item Rule \code{doExeAlu}: executes the instruction by performing the ALU operation or calculating the next PC.
+    The result for the destination register is sent to a wire which will be exported as the \code{sendBypass} interface.
+    \item Rule \code{doFinishAlu}: marks the ROB entry as executed, and sends data forwarding to a wire.
+    In case of a branch, either \code{correctSpec} or \code{redirect} will be called.
+    To avoid conflict with other rules, this rule is split into two based on whether a branch is mispredicted or not.
+    The common case without mispredictions will not conflict with other common rules.
+\end{itemize}
+
+\subsubsection{Future Improvement}
+We should remove the wires for data forwardings.
+An alternative way is to add a bypass method to every pipeline-stage FIFO, and sending data forwardings is directly calling this method of all the relevant pipeline-stage FIFOs.
+
+\subsubsection{Source Code}
+See module \code{mkAluExePipeline} in \code{//procs/RV64G\_OOO/AluExePipeline.bsv}.
