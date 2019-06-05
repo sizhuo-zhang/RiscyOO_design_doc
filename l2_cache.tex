@@ -1,0 +1,34 @@
+\subsection{Shared L2 Cache}
+The L2 cache is shared by and coherent with all the L1 I/D caches.
+It also provides an coherent-access interface for memory accesses that are not sent by the L1 caches.
+For example, the coherent-access interface can be used for performing page walks in the L2 TLBs of each core.
+It can also be used to initialize the memory contents while the processor is starting up.
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface LLCache;
+  interface ParentCacheToChild#(LLCRqId, LLChild) to_child;
+  interface DmaServer#(LLCDmaReqId) dma;
+  interface MemFifoClient#(LdMemRqId#(LLCRqMshrIdx), void) to_mem;
+  interface Perf#(LLCPerfType) perf;
+endinterface
+module mkLLCache(LLCache);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of L2 cache}\label{fig:l2-cache-ifc}
+\end{figure}
+
+Figure~\ref{fig:l2-cache-ifc} shows the interface of the L2 cache:
+\begin{itemize}
+    \item Subinterface \code{to\_child}: contains FIFO interfaces connected to the L1 caches.
+    Type \code{LLChild} is to identify the L1 cache, while type \code{LLCRqId} is to identify the request from a given L1 cache.
+    \item Subinterface \code{dma}: contains FIFO interfaces to perform coherent accesses on the memory system.
+    As shown in Figure~\ref{fig:uncore}, the L2 TLBs and the memory loader use this port to read and write the memory system.
+    \item Subinterface \code{to\_mem}: contains a pair of FIFO interfaces to send requests to DRAM and receive responses from DRAM, respectively.
+    \item Subinterface \code{perf}: is for querying performance counters. 
+\end{itemize}
+
+\subsubsection{Implementation}

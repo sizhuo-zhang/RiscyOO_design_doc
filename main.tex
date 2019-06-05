@@ -80,8 +80,39 @@
 
 \section{Overview}
 
+This document describes the design of the RiscyOO processor, which has been released publicly at \url{https://github.com/csail-csg/riscy-OOO}.
+RiscyOO implements the RISC-V 64-bit instruction set with the IMAFD extensions, i.e., RV64G.
+It is a out-of-order superscalar multiprocessor which can boot multicore Linux and AWS F1 FPGA.
 
-\section{Processor Core}
+\begin{figure}[!htb]
+    \centering
+    \includegraphics[width=\columnwidth]{fig/system_crop.pdf}
+    \caption{Overall system}\label{fig:sys}
+\end{figure}
+
+Figure~\ref{fig:sys} shows the overall system.
+The RiscyOO processor is implemented on the AWS FPGA.
+The FPGA is connected to a x86 host machine via PCIe.
+The x86 host machine runs a piece of software to do the following:
+\begin{itemize}
+    \item Initialize the processor on FPGA (e.g., copy Linux image to the DRAM of FPGA).
+    \item Receive character outputs from the processor on FPGA and display the characters on the terminal of the x86 host.
+    This communication is using the HTIF protocol, which is used in the RISC-V ISA simulator Spike (\url{https://github.com/riscv/riscv-isa-sim}).
+    \item Send keyboard input on the x86 host to the processor on FPGA.
+    This communication is also using the HTIF protocol.
+    \item Query performance counters in the processor on FPGA.
+    \item Receive terminate signals from FPGA.
+\end{itemize}
+
+\noindent\textbf{Document Organization:}
+Section~\ref{sec:core} describes the processor-core microarchitectures.
+In particular, we describe the interface (including conflict matrices), implementation, future improvement and the path of source files for important modules.
+As a convention, we use ``\code{//}'' to denote the root of the git repo when referring to the path of source files.
+Section~\ref{sec:uncore} describes the uncore, including the shared L2 cache, DRAM, etc.
+Section~\ref{sec:sw} describes the software running on the x86 host machine.
+Section~\ref{sec:bench} lists the git repos for the benchmark programs that have been run on the processor.
+
+\section{Processor Core}\label{sec:core}
 
 Figure~\ref{fig:core} shows the overall structure of the processor core.
 Modules are represented by boxes.
@@ -218,6 +249,29 @@ In the rest of this section, we first introduce the general mechanism to control
 
 \input{core}
 
-\section{Uncore}
+\section{Uncore}\label{sec:uncore}
+
+Figure~\ref{fig:uncore} shows the uncore system.
+The L2 cache connects to the DRAM and is shared by all the L1 caches.
+The MMIO platform module is connected to all the MMIO handler modules (Section~\ref{sec:mmio-core}) in the processor cores.
+It handles all the MMIO requests from the cores to access all the MMIO devices, and post interrupts to the cores.
+The boot rom is a MMIO device which contains a piece of RISC-V code that is run at the very beginning when the processor starts up.
+The code zeros the architectural registers, configures the CSRs, and requests the x86 host to initialize the memory content through the memory loader module.
+The memory loader module is another MMIO device that transfers data (Linux image) from the x86 host the memory system (via the coherent L2 cache).
+In the following, we will explain each module in the uncore system.
+
+\begin{figure}[!htb]
+    \centering
+    \includegraphics[width=\columnwidth]{fig/uncore_crop.pdf}
+    \caption{Uncore system}\label{fig:uncore}
+\end{figure}
+
+
+\input{l2_cache}
+
+\section{X86 Host Software}\label{sec:sw}
+
+
+\section{Benchmarks}\label{sec:bench}
 
 \end{document}
