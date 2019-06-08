@@ -32,3 +32,23 @@ Figure~\ref{fig:l2-cache-ifc} shows the interface of the L2 cache:
 \end{itemize}
 
 \subsubsection{Implementation}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{fig/l2_cache_crop.pdf}
+    \caption{Implementation of L2 cache}\label{fig:l2-cache-impl}
+\end{figure}
+
+Figure~\ref{fig:l2-cache-impl} shows the internal implementation of the L2 cache.
+It is very similar to the implementation of the L1 cache (Section~\ref{sec:d-cache}).
+All incoming messages to the L2 cache are first processed by the Income rules which enter the messages to the cache-access pipeline.
+At the end of the pipeline, the Process rules process these messages.
+The Process rules may send responses to L1s, send requests to DRAM, and wake up requests in MSHR.
+The difference is the addition of the Downgrade-L1 rule, which scans MSHRs for requests that need to downgrade L1s and sends downgrade requests to L1 caches.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkLLCache} in \code{//procs/lib/LLCache.bsv}, and
+    \item module \code{mkLLBank} in \code{//coherence/src/LLBank.bsv}.
+\end{itemize}
