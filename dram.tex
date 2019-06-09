@@ -1,0 +1,19 @@
+\subsection{DRAM}
+
+The DRAM module is a wrapper over the DRAM IP core on AWS F1 FPGA.
+Our L2 cache assumes that DRAM will keep requests to the same address in order.
+However, the DRAM IP core on AWS FPGA exposes an AXI interface which does not order a read and a write to the same address.
+This is because reads and writes are on different channels in an AXI interface.
+This DRAM-wrapper module includes a write buffer on top of DRAM to enforce the necessary ordering required by the L2 cache.
+
+\subsubsection{Future Improvement}
+This module also enforces the ordering of an older read and a younger write by having a read buffer to track the in-flight read addresses.
+Enforcing this ordering is unnecessary, because write-after-read hazards can never arise according to the protocol used in the L2 cache.
+We may remove the read buffer in future.
+
+\subsubsection{Source Code}
+See the followings:
+\begin{itemize}
+    \item module \code{mkAWSDramWrapper} in \code{//procs/lib/DramWrapper.bsv}, and
+    \item module \code{mkAWSDramController} in \code{//fpgautils/lib/AWSDramController.bsv}.
+\end{itemize}

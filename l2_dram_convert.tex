@@ -1,0 +1,18 @@
+\subsection{L2-DRAM Converter}
+
+This module connects L2 cache to DRAM.
+It has the following two major functions:
+\begin{itemize}
+    \item Translate RISC-V physical addresses to DRAM addresses:
+    The L2 cache uses the physical addresses.
+    In RISC-V, the physical address of DRAM starts from 0x8000\_0000.
+    To fully utilize the DRAM storage, this module offsets the addresses from L2 cache before any requests are sent to the DRAM.
+    
+    \item Model the bandwidth and latency of DRAM:
+    The relative speed of DRAM compared to the processor core on FPGA is much faster than that in a real machine.
+    To evaluate performance with more accuracy, this module adds a timing model on DRAM.
+    That is, this module forces each DRAM request to take a constant latency (which is much longer than the DRAM latency on FPGA), and limits the number of inflight DRAM requests (which effectively models a constant bandwidth).
+\end{itemize}
+
+\subsubsection{Source Code}
+See module \code{mkDramLLC} in \code{//procs/lib/DramLLC.bsv}.

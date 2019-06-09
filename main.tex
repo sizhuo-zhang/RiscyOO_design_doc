@@ -103,6 +103,7 @@ The x86 host machine runs a piece of software to do the following:
     \item Query performance counters in the processor on FPGA.
     \item Receive terminate signals from FPGA.
 \end{itemize}
+The communication between FPGA and x86 software via PCIe is using the Connectal framework (\url{http://www.connectal.org/}).
 
 \noindent\textbf{Document Organization:}
 Section~\ref{sec:core} describes the processor-core microarchitectures.
@@ -111,6 +112,8 @@ As a convention, we use ``\code{//}'' to denote the root of the git repo when re
 Section~\ref{sec:uncore} describes the uncore, including the shared L2 cache, DRAM, etc.
 Section~\ref{sec:sw} describes the software running on the x86 host machine.
 Section~\ref{sec:bench} lists the git repos for the benchmark programs that have been run on the processor.
+
+This document assumes the readers know the details of RISC-V and Bluespec SystemVerilog (BSV), and will use RISC-V/BSV terms without explanations.
 
 \section{Processor Core}\label{sec:core}
 
@@ -268,6 +271,10 @@ In the following, we will explain each module in the uncore system.
 
 
 \input{l2_cache}
+
+\input{l2_dram_convert}
+
+\input{dram}
 
 \section{X86 Host Software}\label{sec:sw}
 
