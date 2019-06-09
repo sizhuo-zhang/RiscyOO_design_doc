@@ -279,6 +279,16 @@ In the following, we will explain each module in the uncore system.
 
 \input{mmio_platform}
 
+\input{boot_rom}
+
+\input{mem_loader}
+
+\subsection{Putting it All Together}
+Module \code{mkProcDmaWrapper} in \code{//procs/lib/ProcDmaWrapper.bsv} is the top-level module on FPGA, i.e., it contains both cores and uncores.
+Its interface is for communicating with the x86 host software.
+The major part of the interface has been shown in Figure~\ref{fig:uncore}.
+The rest is for debugging or quering performance counters, and we will skip these details.
+
 \section{X86 Host Software}\label{sec:sw}
 
 

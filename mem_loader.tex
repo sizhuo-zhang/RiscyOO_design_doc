@@ -1,0 +1,16 @@
+\subsection{Memory Loader}
+The memory loader module is responsible for initializing the DRAM.
+It has the following two MMIO registers:
+\begin{itemize}
+    \item Start register (0x0100\_0000):
+    Writing to this register will result in telling the x86 host software to transfer the contents of BBL (Linux image) to the FPGA to initialize the DRAM.
+    The write data should be the physical address of the starting point of the (non-MMIO) main memory.
+    This write data will also be sent to the x86 host software for a sanity check.
+    \item Busy register (0x0100\_0008): is a read-only register.
+    It is one if the initialization of DRAM is ongoing.
+    The boot-rom program spins on this register to determine if the initialization is done or not.
+\end{itemize}
+We skip the details of the implementation.
+
+\subsubsection{Source Code}
+See module \code{mkMemLoader} in \code{//procs/lib/MemLoader.bsv}.

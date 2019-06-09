@@ -1,0 +1,24 @@
+\subsection{Boot Rom}
+The boot rom module contains the very first instructions executed when the processor starts.
+In the boot-rom program (\code{//procs/rom/rom.S}), core 0 and other cores do different things:
+\begin{itemize}
+    \item Core 0 does the following:
+    \begin{enumerate}
+        \item Use MMIO access to request memory loader to start the initialization of DRAM.
+        \item Keep checking memory loader until the DRAM initialization is done.
+        \item Set the MSIP bits of all other cores to wake them up.
+        \item Jump to BBL.
+    \end{enumerate}
+    \item Core non-zero does the following:
+    \begin{enumerate}
+        \item Set up \code{mtvec} CSR for a customized trap handler.
+        \item Turn on MSIE to receive the wake-up signal from core 0.
+        \item Loop forever to wait for the wake-up from core 0.
+        \item After receiving the wake-up signal from core 0, the trap handler will jump to BBL.
+    \end{enumerate}
+\end{itemize}
+The content of the boot rom is initialized by the x86 host software before the processor starts.
+The implementation of the module is straightforward, so we skip the details here.
+
+\subsubsection{Source Code}
+See module \code{mkBootRom} in \code{//procs/lib/BootRom.bsv}.
