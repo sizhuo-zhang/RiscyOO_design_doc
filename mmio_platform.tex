@@ -1,0 +1,78 @@
+\subsection{MMIO Platform}
+The MMIO platform module handles all MMIO requests from the processor cores and also post timer interrupts to processor cores.
+Our system has the following MMIO addresses:
+\begin{itemize}
+    \item Boot rom (0x1000 to 0x1FFF): The 4KB boot rom contains the very first instructions executed when the processor starts.
+    \item Memory loader (0x0100\_0000 to 0x0100\_000F): The memory loader contains two MMIO registers to control the initialization of DRAM.
+    \item MSIP bits of all processors (0x0200\_0000 to 0x0200\_0000 + 4 * CoreNum - 1): The MSIP bit of core $i$ is a 4B data at 0x0200\_0000 + 4 * $i$.
+    \item The \code{mtimecmp} (machine-mode time compare) register of each processor core (0x0200\_4000 to 0x0200\_0000 + 8 * CoreNum - 1): The \code{mtimecmp} register of core $i$ is a 8B data at 0x0200\_4000 + 8 * $i$.
+    \item The \code{mtime} (machine-mode time) register (0x0200\_BFF8 to 0x0200\_BFFF): The \code{mtime} register is a 8B data.
+    \item HTIF for character input/output: HTIF contains two MMIO 8B registers \code{tohost} and \code{fromhost}:
+    \begin{itemize}
+        \item \code{tohost}: is like a FIFO towards x86 host software.
+        Writing \code{tohost} will enqueue any non-zero write-data to FIFO.
+        Reading \code{tohost} will return the oldest data in the FIFO, and will return zero if the FIFO is empty.
+        \item \code{fromhost}: is like a FIFO holding any non-zero data send by the x86 host software.
+        Reading \code{fromhost} returns the oldest data in the FIFO or zero if the FIFO is empty.
+        Writing zero to \code{fromhost} dequeues the FIFO.
+    \end{itemize}
+    Their addresses are beyond \code{0x8000\_0000} and are determined when we compile the Linux image (more precisely the BBL).
+    The x86 host software will tell the processor the exact addresses of these two MMIO registers at startup time.
+\end{itemize}
+All of the above MMIO regions except memory loader follow the addresses used in the RISC-V ISA simulator Spike (\code{//tools/riscv-isa-sim}).
+
+\subsubsection{Interface}
+
+\begin{figure}
+\begin{lstlisting}[caption={}]
+interface MMIOPlatform;
+  method Action start(Addr toHost, Addr fromHost);
+  method ActionValue#(Data) to_host;
+  method Action from_host(Data x);
+endinterface
+module mkMMIOPlatform#(
+  BootRomMMIO bootRom, MemLoaderMMIO memLoader,
+  Vector#(CoreNum, MMIOCoreToPlatform) cores
+)(MMIOPlatform);
+  // implementation
+endmodule
+\end{lstlisting}
+\caption{Interface of MMIO platform module}\label{fig:mmio-platform-ifc}
+\end{figure}
+
+Figure~\ref{fig:mmio-platform-ifc} shows the interface of the MMIO platform interface.
+The module interface \code{MMIOPlatform} contains the following fields:
+\begin{itemize}
+    \item Method \code{start}: sets the addresses of \code{tohost} and \code{fromhost} MMIO registers.
+    \item Methods \code{to\_host} and \code{from\_host}: are FIFO interfaces connected to the x86 host software.
+\end{itemize}
+The module takes the following arguments:
+\begin{itemize}
+    \item Interface \code{bootRom}: contains FIFO interfaces to access the boot rom.
+    \item Interface \code{memLoader}: contains a method to access the MMIO registers in memory loader module directly.
+    \item Interface \code{cores}: is a vector of subinterfaces, each of which contains FIFOs of MMIO requests and responses for a processor core.
+\end{itemize}
+
+\subsubsection{Implementation}
+The module processes MMIO requests from cores in a blocking way, i.e., there is at most one in-flight MMIO request in the system..
+When the module receives a MMIO request from a core, it will forward the request to the corresponding MMIO device and wait for response, or handle the request directly if the relative MMIO registers are inside this module.
+In particular, this module does not hold MSIP bits inside it.
+A MMIO request from core $i$ to access the MSIP bit of core $j$ will be forwarded to the MMIO handler module of core $j$.
+This MMIO platform module waits for the response from core $j$ and then forward the response to core $i$.
+
+The module also scans all the \code{mtimecmp} registers to post timer interrupts to  processor cores if needed.
+The module also broadcast the value of the \code{mtime} register to each core.
+
+\subsubsection{Future Improvement}
+The blocking way of processing MMIO requests is inefficient.
+In future, this module should not hold any MMIO registers, and it serves only as a router to route MMIO requests to different MMIO devices.
+Each MMIO device can decide how many requests it can process in parallel.
+
+Another issue is the unfair arbitration between the MMIO requests from different cores.
+Currently, this can trigger false alerts about system deadlocking.
+For example, core 0  keeps checking the memory loader to see if DRAM initialization is done or not at start up time, and it can occupy the whole bandwidth of the MMIO platform module.
+Thus, other cores cannot fetch instructions from the boot rom.
+If DRAM initialization takes a long time, our deadlock detection logic will output false alerts that cores other than core 0 are deadlocking.
+
+\subsubsection{Source Code}
+See module \code{mkMMIOPlatform} in \code{//procs/lib/MMIPlatform.bsv}.

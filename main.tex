@@ -81,6 +81,8 @@
 \section{Overview}
 
 This document describes the design of the RiscyOO processor, which has been released publicly at \url{https://github.com/csail-csg/riscy-OOO}.
+As a convention, we use ``\code{//}'' to denote the root of the git repo when referring to the path of source files.
+
 RiscyOO implements the RISC-V 64-bit instruction set with the IMAFD extensions, i.e., RV64G.
 It is a out-of-order superscalar multiprocessor which can boot multicore Linux and AWS F1 FPGA.
 
@@ -97,18 +99,17 @@ The x86 host machine runs a piece of software to do the following:
 \begin{itemize}
     \item Initialize the processor on FPGA (e.g., copy Linux image to the DRAM of FPGA).
     \item Receive character outputs from the processor on FPGA and display the characters on the terminal of the x86 host.
-    This communication is using the HTIF protocol, which is used in the RISC-V ISA simulator Spike (\url{https://github.com/riscv/riscv-isa-sim}).
+    This communication is using the HTIF protocol, which is used in the RISC-V ISA simulator Spike (\url{https://github.com/riscv/riscv-isa-sim}, our fork of spike is at \code{//tools/riscv-isa-sim}).
     \item Send keyboard input on the x86 host to the processor on FPGA.
     This communication is also using the HTIF protocol.
     \item Query performance counters in the processor on FPGA.
     \item Receive terminate signals from FPGA.
 \end{itemize}
-The communication between FPGA and x86 software via PCIe is using the Connectal framework (\url{http://www.connectal.org/}).
+The communication between FPGA and x86 software via PCIe is using the Connectal framework (\url{http://www.connectal.org/}, our fork of the Connectal project is at \code{//connectal}).
 
 \noindent\textbf{Document Organization:}
 Section~\ref{sec:core} describes the processor-core microarchitectures.
 In particular, we describe the interface (including conflict matrices), implementation, future improvement and the path of source files for important modules.
-As a convention, we use ``\code{//}'' to denote the root of the git repo when referring to the path of source files.
 Section~\ref{sec:uncore} describes the uncore, including the shared L2 cache, DRAM, etc.
 Section~\ref{sec:sw} describes the software running on the x86 host machine.
 Section~\ref{sec:bench} lists the git repos for the benchmark programs that have been run on the processor.
@@ -275,6 +276,8 @@ In the following, we will explain each module in the uncore system.
 \input{l2_dram_convert}
 
 \input{dram}
+
+\input{mmio_platform}
 
 \section{X86 Host Software}\label{sec:sw}
 
