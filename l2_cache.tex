@@ -1,5 +1,6 @@
 \subsection{Shared L2 Cache}
 The L2 cache is shared by and coherent with all the L1 I/D caches.
+The coherence protocol is a 4-hop MESI protocol based on the thesis of Vijayaraghavan~\cite{murali}.
 It also provides an coherent-access interface for memory accesses that are not sent by the L1 caches.
 For example, the coherent-access interface can be used for performing page walks in the L2 TLBs of each core.
 It can also be used to initialize the memory contents while the processor is starting up.

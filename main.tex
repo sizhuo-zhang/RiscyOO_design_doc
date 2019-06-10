@@ -99,13 +99,13 @@ The x86 host machine runs a piece of software to do the following:
 \begin{itemize}
     \item Initialize the processor on FPGA (e.g., copy Linux image to the DRAM of FPGA).
     \item Receive character outputs from the processor on FPGA and display the characters on the terminal of the x86 host.
-    This communication is using the HTIF protocol, which is used in the RISC-V ISA simulator Spike (\url{https://github.com/riscv/riscv-isa-sim}, our fork of spike is at \code{//tools/riscv-isa-sim}).
+    This communication is using the HTIF protocol, which is used in the RISC-V ISA simulator Spike~\cite{spike} (our fork of Spike is at \code{//tools/riscv-isa-sim}).
     \item Send keyboard input on the x86 host to the processor on FPGA.
     This communication is also using the HTIF protocol.
     \item Query performance counters in the processor on FPGA.
     \item Receive terminate signals from FPGA.
 \end{itemize}
-The communication between FPGA and x86 software via PCIe is using the Connectal framework (\url{http://www.connectal.org/}, our fork of the Connectal project is at \code{//connectal}).
+The communication between FPGA and x86 software via PCIe is using the Connectal framework~\cite{connectal}, our fork of Connectal is at \code{//connectal}).
 
 \noindent\textbf{Document Organization:}
 Section~\ref{sec:core} describes the processor-core microarchitectures.
@@ -314,5 +314,24 @@ Below are the major classes that implement the callbacks:
 \end{itemize}
 
 \section{Benchmarks}\label{sec:bench}
+We have cross-compiled (part of) the following benchmarks to RISC-V and they are available publicly:
+\begin{itemize}
+    \item PARSEC~\cite{bienia11benchmarking}: \url{https://github.com/csail-csg/parsec}, branch \code{master}.
+    \item GAP (graph algorithms)~\cite{beamer2015gap}: \url{https://github.com/csail-csg/gapbs}, branch \code{riscy-OOO}.
+\end{itemize}
+The following benchmarks are private to MIT-CSG lab:
+\begin{itemize}
+    \item SPECINT2006: \url{https://github.mit.edu/riscy/SPEC}, branch \code{master}.
+    \item x264 (the x264 benchmark in PARSEC does not work, and this one directly compiles from the original x264 source): \url{https://github.mit.edu/riscy/x264}, branch \code{riscv}.
+\end{itemize}
+The following pre-built BBLs are private to MIT-CSG lab on the AWS EFS:
+\begin{itemize}
+    \item PARSEC (including x264): \code{/efs/szzhang/run/parsec\_bbls/normal}.
+    \item GAP: \code{/efs/szzhang/run/gapbs\_bbls/normal}.
+    \item SPECCINT2006: \code{/efs/szzhang/run/bbls} (one input per benchmark), and  \\ \code{/efs/szzhang/run/ref\_bbls} (all ref inputs).
+\end{itemize}
+
+\bibliographystyle{plain}
+\bibliography{ref}
 
 \end{document}
