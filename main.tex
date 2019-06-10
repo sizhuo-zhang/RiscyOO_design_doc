@@ -290,7 +290,28 @@ The major part of the interface has been shown in Figure~\ref{fig:uncore}.
 The rest is for debugging or quering performance counters, and we will skip these details.
 
 \section{X86 Host Software}\label{sec:sw}
-
+The x86 host software is a C++ project which uses the Connectal framework to communicate with FPGA.
+The main function is at \code{//procs/cpp/testproc.cpp}.
+The main thread does the following:
+\begin{enumerate}
+    \item Parse the command-line arguments.
+    The two most important arguments are the binary of the boot-rom program and the BBL (Linux image).
+    \item Initialize the boot rom on FPGA.
+    We also attach a flattened device tree to the end of the boot-rom binary before the initialization.
+    \item Start the processor, and then wait for the processor to signal terminate.
+    While waiting, the main thread also checks for keyboard inputs, and sends them to FPGA.
+\end{enumerate}
+The Connectal-indication thread runs callback functions when the FPGA sends messages to the x86 host.
+Below are the major classes that implement the callbacks:
+\begin{itemize}
+    \item Class \code{ProIndication}: receives the HTIF messages, i.e., the data written into \code{tohost} MMIO location by the RiscyOO processor.
+    The handling is done in another thread (class \code{ToHostHandler}) to avoid software deadlock (because the handling may incur more messages between FPGA and host).
+    The \code{ProIndication} class also receives the terminate signal from the FPGA.
+    \item Class \code{MemLoaderIndication}: receives the request from the FPGA to initialize DRAM.
+    Upon receiving the request, the class spawns a new thread to transfer the content of BBL to FPGA.
+    \item Class \code{BootRomIndication}: receives the complete signal for the initialization of boot rom from the FPGA.
+    The main thread will not start the processor until this complete signal is received.
+\end{itemize}
 
 \section{Benchmarks}\label{sec:bench}
 
